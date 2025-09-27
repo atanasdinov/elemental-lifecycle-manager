@@ -20,16 +20,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ReleaseSpec defines the desired state of Release
 type ReleaseSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of Release. Edit release_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Version specifies the target version for platform upgrade.
+	// The version format is X.Y.Z, for example "1.0.1".
+	Version string `json:"version"`
+	// Registry specifies an OCI registry to fetch release metadata from.
+	Registry string `json:"registry"`
 }
 
 // ReleaseStatus defines the observed state of Release

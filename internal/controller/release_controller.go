@@ -39,17 +39,20 @@ type ReleaseReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Release object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.2/pkg/reconcile
 func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	var release lifecyclev1alpha1.Release
+
+	if err := r.Get(ctx, req.NamespacedName, &release); err != nil {
+		logger.Error(err, "unable to fetch Release")
+
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	logger.Info("Upgrade to the platform requested",
+		"version", release.Spec.Version,
+		"registry", release.Spec.Registry)
 
 	return ctrl.Result{}, nil
 }

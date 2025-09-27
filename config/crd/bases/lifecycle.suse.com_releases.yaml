@@ -39,10 +39,18 @@ spec:
           spec:
             description: ReleaseSpec defines the desired state of Release
             properties:
-              foo:
-                description: Foo is an example field of Release. Edit release_types.go
-                  to remove/update
+              registry:
+                description: Registry specifies an OCI registry to fetch release metadata
+                  from.
                 type: string
+              version:
+                description: |-
+                  Version specifies the target version for platform upgrade.
+                  The version format is X.Y.Z, for example "1.0.1".
+                type: string
+            required:
+            - registry
+            - version
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release
