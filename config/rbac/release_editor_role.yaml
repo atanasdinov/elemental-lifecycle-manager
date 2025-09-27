@@ -1,8 +1,11 @@
----
+# permissions for end users to edit releases.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  labels:
+    app.kubernetes.io/name: elemental-lifecycle-manager
+    app.kubernetes.io/managed-by: kustomize
+  name: release-editor-role
 rules:
 - apiGroups:
   - lifecycle.suse.com
@@ -19,14 +22,6 @@ rules:
 - apiGroups:
   - lifecycle.suse.com
   resources:
-  - releases/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - lifecycle.suse.com
-  resources:
   - releases/status
   verbs:
   - get
-  - patch
-  - update

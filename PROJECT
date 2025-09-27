@@ -7,4 +7,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: elemental-lifecycle-manager
 repo: github.com/suse/elemental-lifecycle-manager
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: suse.com
+  group: lifecycle
+  kind: Release
+  path: github.com/suse/elemental-lifecycle-manager/api/v1alpha1
+  version: v1alpha1
 version: "3"
