@@ -8,7 +8,7 @@ require (
 	github.com/onsi/gomega v1.38.3
 	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20251211213351-2f75d12fe083
 	github.com/suse/elemental/v3 v3.0.0-alpha.20251212
-	k8s.io/api v0.34.3
+	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.34.3
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
