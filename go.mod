@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/google/go-containerregistry v0.20.7
 	github.com/onsi/ginkgo/v2 v2.27.3
-	github.com/onsi/gomega v1.38.3
+	github.com/onsi/gomega v1.39.0
 	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20251211213351-2f75d12fe083
 	github.com/suse/elemental/v3 v3.0.0-alpha.20251212
 	k8s.io/api v0.35.0
