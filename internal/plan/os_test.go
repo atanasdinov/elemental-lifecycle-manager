@@ -17,6 +17,8 @@ limitations under the License.
 package plan
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -99,8 +101,8 @@ var _ = Describe("OS plan tests", func() {
 		It("configures upgrade container", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
 			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
-			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"elemental3ctl"}))
-			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{"upgrade", "--os-image", osImage}))
+			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"chroot", "/host", "/bin/sh", "-c"}))
+			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)}))
 		})
 
 		It("enables drain with correct settings", func() {
@@ -153,8 +155,8 @@ var _ = Describe("OS plan tests", func() {
 		It("configures upgrade container", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
 			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
-			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"elemental3ctl"}))
-			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{"upgrade", "--os-image", osImage}))
+			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"chroot", "/host", "/bin/sh", "-c"}))
+			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)}))
 		})
 
 		It("enables drain with correct settings", func() {

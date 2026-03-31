@@ -25,8 +25,30 @@ import (
 )
 
 const (
-	osControlPlaneBaseName = "elemental-os-control-plane"
-	osWorkerBaseName       = "elemental-os-worker"
+	osControlPlaneBaseName     = "elemental-os-control-plane"
+	osWorkerBaseName           = "elemental-os-worker"
+	basicUpgradeScriptTemplate = `
+ELEMENTAL_PATH="/var/lib/elemental"
+UPGRADE_SUCCESS_FLAG="$ELEMENTAL_PATH/.os-upgrade-successful"
+
+mkdir -p "$ELEMENTAL_PATH"
+if [ -f "$UPGRADE_SUCCESS_FLAG" ]; then
+  echo "Upgrade already done. Exiting."
+  rm -f "$UPGRADE_SUCCESS_FLAG"
+  exit 0
+fi
+
+elemental3ctl --debug upgrade --os-image "%s"
+rc=$?
+
+if [ "$rc" -ne 0 ]; then
+  exit "$rc"
+fi
+
+touch "$UPGRADE_SUCCESS_FLAG"
+sync
+reboot
+`
 )
 
 // osControlPlaneName returns the full plan name for the given version.
@@ -64,8 +86,8 @@ func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) *up
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
 		Image:   upgradeImage,
-		Command: []string{"elemental3ctl"},
-		Args:    []string{"upgrade", "--os-image", osImage},
+		Command: []string{"chroot", "/host", "/bin/sh", "-c"},
+		Args:    []string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)},
 	}
 	return p
 }
@@ -95,8 +117,8 @@ func OSWorker(releaseName, osImage, releaseVersion string, drain bool) *upgradec
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
 		Image:   upgradeImage,
-		Command: []string{"elemental3ctl"},
-		Args:    []string{"upgrade", "--os-image", osImage},
+		Command: []string{"chroot", "/host", "/bin/sh", "-c"},
+		Args:    []string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)},
 	}
 	return p
 }
