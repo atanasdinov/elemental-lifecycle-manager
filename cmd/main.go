@@ -144,8 +144,8 @@ func main() {
 		Scheme:           mgr.GetScheme(),
 		RetrieveManifest: release.RetrieveManifest,
 		Pipeline: upgrade.NewPipeline(
-			upgrade.NewOSReconciler(k8sClient),
-			upgrade.NewKubernetesReconciler(k8sClient, helmClient),
+			upgrade.NewOSReconciler(k8sClient, nil),
+			upgrade.NewKubernetesReconciler(k8sClient, helmClient, nil),
 			upgrade.NewHelmReconciler(k8sClient, helmClient),
 		),
 	}).SetupWithManager(mgr); err != nil {

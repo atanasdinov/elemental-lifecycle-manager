@@ -125,3 +125,12 @@ func kubeletVersionMatches(kubeletVersion, targetVersion string) bool {
 
 	return kubelet == target
 }
+
+func getNodeNamesFromList(nodes []corev1.Node) []string {
+	nodeNames := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		nodeNames = append(nodeNames, n.Name)
+	}
+
+	return nodeNames
+}

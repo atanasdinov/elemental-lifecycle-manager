@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	helmv1 "github.com/k3s-io/helm-controller/pkg/apis/helm.cattle.io/v1"
+	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/helm"
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
@@ -38,15 +39,17 @@ import (
 
 // KubernetesReconciler reconciles Kubernetes upgrades via SUC Plans and verifies node state.
 type KubernetesReconciler struct {
-	planHandler
-	helmClient helm.Client
+	client.Client
+	sucReconciler PlanReconciler
+	helmClient    helm.Client
 }
 
-func NewKubernetesReconciler(c client.Client, h helm.Client) *KubernetesReconciler {
-	return &KubernetesReconciler{
-		planHandler: planHandler{Client: c},
-		helmClient:  h,
+func NewKubernetesReconciler(c client.Client, h helm.Client, sucReconciler PlanReconciler) *KubernetesReconciler {
+	if sucReconciler == nil {
+		sucReconciler = &planReconciler{Client: c}
 	}
+
+	return &KubernetesReconciler{Client: c, sucReconciler: sucReconciler, helmClient: h}
 }
 
 func (r *KubernetesReconciler) Phase() Phase {
@@ -70,70 +73,27 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 		"version", k8sConfig.Version,
 		"release", config.ReleaseName)
 
-	nodeList := &corev1.NodeList{}
-	if err := r.List(ctx, nodeList); err != nil {
-		return nil, err
-	}
-
-	p := plan.KubernetesControlPlane(config.ReleaseName, k8sConfig.Image, k8sConfig.Version, k8sConfig.DrainOpts.ControlPlane)
-	controlPlanePlan, err := r.getOrCreatePlan(ctx, p)
+	plans, err := r.preparePlans(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("reconciling control plane plan: %w", err)
+		return nil, fmt.Errorf("preparing Kubernetes upgrade plans: %w", err)
 	}
 
-	if status := parsePhaseStatusFromPlan(controlPlanePlan); status.State == lifecyclev1alpha1.UpgradeFailed {
-		return status, nil
-	}
-
-	cpNodes, err := filterNodesBySelector(nodeList.Items, controlPlanePlan.Spec.NodeSelector)
-	if err != nil {
-		return nil, fmt.Errorf("filtering control plane nodes: %w", err)
-	}
-
-	if !allNodesAtKubernetesVersion(cpNodes, k8sConfig.Version) {
-		return &PhaseStatus{
-			State:   lifecyclev1alpha1.UpgradeInProgress,
-			Message: "Control plane nodes are being upgraded",
-		}, nil
-	}
-
-	logger.Info("Control plane nodes upgraded", "count", len(cpNodes))
-
-	if isControlPlaneOnlyCluster(nodeList.Items) {
-		logger.Info("Control-plane-only cluster detected, skipping worker upgrade")
-
-		if status, err := r.checkCoreComponents(ctx, k8sConfig.CoreComponents); err != nil {
-			return nil, err
-		} else if status != nil {
-			return status, nil
+	for _, p := range plans {
+		result, err := r.sucReconciler.Reconcile(ctx, p)
+		if err != nil {
+			return nil, fmt.Errorf("reconciling Kubernetes upgrade plan '%s': %w", p.Name, err)
 		}
 
-		return &PhaseStatus{
-			State:   lifecyclev1alpha1.UpgradeSucceeded,
-			Message: "All cluster nodes are upgraded (control-plane-only cluster)",
-		}, nil
-	}
+		if result.Status.State != lifecyclev1alpha1.PlanComplete {
+			return result.Status, nil
+		}
 
-	p = plan.KubernetesControlPlane(config.ReleaseName, k8sConfig.Image, k8sConfig.Version, k8sConfig.DrainOpts.Worker)
-	workerPlan, err := r.getOrCreatePlan(ctx, p)
-	if err != nil {
-		return nil, fmt.Errorf("reconciling worker plan: %w", err)
-	}
-
-	if status := parsePhaseStatusFromPlan(controlPlanePlan); status.State == lifecyclev1alpha1.UpgradeFailed {
-		return status, nil
-	}
-
-	workerNodes, err := filterNodesBySelector(nodeList.Items, workerPlan.Spec.NodeSelector)
-	if err != nil {
-		return nil, fmt.Errorf("filtering worker nodes: %w", err)
-	}
-
-	if !allNodesAtKubernetesVersion(workerNodes, k8sConfig.Version) {
-		return &PhaseStatus{
-			State:   lifecyclev1alpha1.UpgradeInProgress,
-			Message: "Worker nodes are being upgraded",
-		}, nil
+		if !allNodesAtKubernetesVersion(result.Nodes, k8sConfig.Version) {
+			return &PhaseStatus{
+				State:   lifecyclev1alpha1.UpgradeInProgress,
+				Message: fmt.Sprintf("Plan %s completed, waiting for node upgrade verification", p.Name),
+			}, nil
+		}
 	}
 
 	if status, err := r.checkCoreComponents(ctx, k8sConfig.CoreComponents); err != nil {
@@ -142,12 +102,28 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 		return status, nil
 	}
 
-	logger.Info("All nodes upgraded", "controlPlane", len(cpNodes), "workers", len(workerNodes))
-
 	return &PhaseStatus{
 		State:   lifecyclev1alpha1.UpgradeSucceeded,
-		Message: fmt.Sprintf("All %d nodes upgraded successfully", len(cpNodes)+len(workerNodes)),
+		Message: "All nodes upgraded successfully",
 	}, nil
+}
+
+func (r *KubernetesReconciler) preparePlans(ctx context.Context, config *Config) (plans []*upgradecattlev1.Plan, err error) {
+	k8sConfig := config.Kubernetes
+	cpPlan := plan.KubernetesControlPlane(config.ReleaseName, k8sConfig.Image, k8sConfig.Version, k8sConfig.DrainOpts.ControlPlane)
+	planList := []*upgradecattlev1.Plan{cpPlan}
+
+	allNodes := &corev1.NodeList{}
+	if err := r.List(ctx, allNodes); err != nil {
+		return nil, fmt.Errorf("listing cluster nodes: %w", err)
+	}
+
+	if !isControlPlaneOnlyCluster(allNodes.Items) {
+		wkPlan := plan.KubernetesWorker(config.ReleaseName, k8sConfig.Image, k8sConfig.Version, k8sConfig.DrainOpts.Worker)
+		planList = append(planList, wkPlan)
+	}
+
+	return planList, nil
 }
 
 // checkCoreComponents verifies that all Kubernetes core components are upgraded.

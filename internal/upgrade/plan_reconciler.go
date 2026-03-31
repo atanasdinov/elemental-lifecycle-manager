@@ -20,33 +20,64 @@ import (
 	"context"
 	"fmt"
 
+	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
+	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
-	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 )
 
-type planHandler struct {
+type PlanResult struct {
+	Plan   *upgradecattlev1.Plan
+	Status *PhaseStatus
+	Nodes  []corev1.Node
+}
+
+type PlanReconciler interface {
+	Reconcile(ctx context.Context, desired *upgradecattlev1.Plan) (*PlanResult, error)
+}
+
+type planReconciler struct {
 	client.Client
 }
 
-func (r *planHandler) getOrCreatePlan(ctx context.Context, desired *upgradecattlev1.Plan) (*upgradecattlev1.Plan, error) {
+func (p *planReconciler) Reconcile(ctx context.Context, desired *upgradecattlev1.Plan) (*PlanResult, error) {
+	plan, err := p.getOrCreatePlan(ctx, desired)
+	if err != nil {
+		return nil, fmt.Errorf("parsing plan: %w", err)
+	}
+
+	result := &PlanResult{
+		Plan:   plan,
+		Status: parsePhaseStatusFromPlan(plan),
+	}
+
+	if result.Status.State == lifecyclev1alpha1.PlanComplete {
+		nodes, err := p.listNodesForPlan(ctx, plan)
+		if err != nil {
+			return nil, fmt.Errorf("listing plan '%s' nodes: %w", plan.Name, err)
+		}
+		result.Nodes = nodes.Items
+	}
+
+	return result, nil
+}
+
+func (p *planReconciler) getOrCreatePlan(ctx context.Context, desired *upgradecattlev1.Plan) (plan *upgradecattlev1.Plan, err error) {
 	logger := log.FromContext(ctx)
 
-	existing := &upgradecattlev1.Plan{}
-	err := r.Get(ctx, types.NamespacedName{
+	plan = &upgradecattlev1.Plan{}
+	err = p.Get(ctx, types.NamespacedName{
 		Name:      desired.Name,
 		Namespace: desired.Namespace,
-	}, existing)
+	}, plan)
 
 	if apierrors.IsNotFound(err) {
 		logger.Info("Creating SUC Plan", "name", desired.Name)
-		if err = r.Create(ctx, desired); err != nil {
+		if err = p.Create(ctx, desired); err != nil {
 			return nil, err
 		}
 		return desired, nil
@@ -56,30 +87,21 @@ func (r *planHandler) getOrCreatePlan(ctx context.Context, desired *upgradecattl
 		return nil, err
 	}
 
-	return existing, nil
+	return plan, nil
 }
 
-func (r *planHandler) listNodesForPlan(ctx context.Context, p *upgradecattlev1.Plan) (nodes *corev1.NodeList, err error) {
-	selector, err := metav1.LabelSelectorAsSelector(p.Spec.NodeSelector)
+func (p *planReconciler) listNodesForPlan(ctx context.Context, plan *upgradecattlev1.Plan) (nodes *corev1.NodeList, err error) {
+	selector, err := metav1.LabelSelectorAsSelector(plan.Spec.NodeSelector)
 	if err != nil {
 		return nil, fmt.Errorf("parsing node selector: %w", err)
 	}
 
 	nodes = &corev1.NodeList{}
-	if err := r.List(ctx, nodes, client.MatchingLabelsSelector{Selector: selector}); err != nil {
+	if err := p.List(ctx, nodes, client.MatchingLabelsSelector{Selector: selector}); err != nil {
 		return nil, fmt.Errorf("listing nodes with selector %s: %w", selector, err)
 	}
 
 	return nodes, nil
-}
-
-func (r *planHandler) reconcilePlan(ctx context.Context, planTemplate *upgradecattlev1.Plan) (status *PhaseStatus, err error) {
-	activePlan, err := r.getOrCreatePlan(ctx, planTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("attempting to retrieve or create %s: %w", planTemplate.Name, err)
-	}
-
-	return parsePhaseStatusFromPlan(activePlan), nil
 }
 
 func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {

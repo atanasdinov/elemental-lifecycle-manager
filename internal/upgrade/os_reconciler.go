@@ -31,13 +31,16 @@ import (
 
 // OSReconciler reconciles OS upgrades via SUC Plans and verifies node state.
 type OSReconciler struct {
-	planHandler
+	client.Client
+	sucReconciler PlanReconciler
 }
 
-func NewOSReconciler(c client.Client) *OSReconciler {
-	return &OSReconciler{
-		planHandler: planHandler{Client: c},
+func NewOSReconciler(c client.Client, sucReconciler PlanReconciler) *OSReconciler {
+	if sucReconciler == nil {
+		sucReconciler = &planReconciler{Client: c}
 	}
+
+	return &OSReconciler{Client: c, sucReconciler: sucReconciler}
 }
 
 func (r *OSReconciler) Phase() Phase {
@@ -66,36 +69,26 @@ func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseSta
 			"plan", p.Name,
 			"namespace", p.Namespace,
 		)
-		status, err := r.reconcilePlan(ctx, p)
+		result, err := r.sucReconciler.Reconcile(ctx, p)
 		if err != nil {
-			return nil, fmt.Errorf("reconciling plan %s: %w", p.Name, err)
+			return nil, fmt.Errorf("reconciling OS upgrade plan '%s': %w", p.Name, err)
 		}
 
-		if status.State != lifecyclev1alpha1.PlanComplete {
-			return status, nil
+		if result.Status.State != lifecyclev1alpha1.PlanComplete {
+			return result.Status, nil
 		}
 
-		planNodes, err := r.listNodesForPlan(ctx, p)
-		if err != nil {
-			return nil, fmt.Errorf("listing nodes for plan %s: %w", p.Name, err)
-		}
-
-		if !allNodesReady(planNodes.Items) {
+		if !allNodesReady(result.Nodes) {
 			return &PhaseStatus{
 				State:   lifecyclev1alpha1.UpgradeInProgress,
 				Message: fmt.Sprintf("Plan %s completed, waiting for node upgrade verification", p.Name),
 			}, nil
 		}
 
-		nodeNames := make([]string, 0, len(planNodes.Items))
-		for _, n := range planNodes.Items {
-			nodeNames = append(nodeNames, n.Name)
-		}
-
 		logger.Info("OS upgrade plan completed",
 			"plan", p.Name,
 			"namespace", p.Namespace,
-			"upgradedNodes", nodeNames,
+			"applied_on", getNodeNamesFromList(result.Nodes),
 		)
 	}
 
