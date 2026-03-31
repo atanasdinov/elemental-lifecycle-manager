@@ -96,7 +96,7 @@ func (r *ReleaseReconciler) reconcileNormal(ctx context.Context, release *lifecy
 	setCondition(release, lifecyclev1alpha1.ConditionManifestResolved, metav1.ConditionTrue,
 		lifecyclev1alpha1.UpgradeSucceeded, "Release manifest retrieved successfully")
 
-	config, err := r.parseUpgradeConfig(ctx, manifest, release.Name)
+	config, err := r.parseUpgradeConfig(ctx, manifest, release)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("parsing upgrade config: %w", err)
 	}
@@ -207,7 +207,11 @@ func (r *ReleaseReconciler) mapHelmChartToRelease(ctx context.Context, obj clien
 	return nil
 }
 
-func (r *ReleaseReconciler) parseDrainOpts(ctx context.Context) (opts *upgrade.DrainOpts, err error) {
+func (r *ReleaseReconciler) parseDrainOpts(ctx context.Context, release *lifecyclev1alpha1.Release) (*upgrade.DrainOpts, error) {
+	if release.Spec.DisableDrain {
+		return &upgrade.DrainOpts{ControlPlane: false, Worker: false}, nil
+	}
+
 	nodeList := &corev1.NodeList{}
 	if err := r.List(ctx, nodeList); err != nil {
 		return nil, fmt.Errorf("listing nodes: %w", err)
@@ -215,39 +219,32 @@ func (r *ReleaseReconciler) parseDrainOpts(ctx context.Context) (opts *upgrade.D
 
 	var controlPlaneCounter, workerCounter int
 	for _, node := range nodeList.Items {
-		if node.Labels[plan.ControlPlaneLabel] != "true" {
-			workerCounter++
-		} else {
+		if node.Labels[plan.ControlPlaneLabel] == "true" {
 			controlPlaneCounter++
+		} else {
+			workerCounter++
 		}
 	}
 
-	opts = &upgrade.DrainOpts{}
 	switch {
 	case controlPlaneCounter > 1 && workerCounter <= 1:
-		opts.ControlPlane = true
-		opts.Worker = false
+		return &upgrade.DrainOpts{ControlPlane: true, Worker: false}, nil
 	case controlPlaneCounter == 1 && workerCounter > 1:
-		opts.ControlPlane = false
-		opts.Worker = true
+		return &upgrade.DrainOpts{ControlPlane: false, Worker: true}, nil
 	case controlPlaneCounter <= 1 && workerCounter <= 1:
-		opts.ControlPlane = false
-		opts.Worker = false
+		return &upgrade.DrainOpts{ControlPlane: false, Worker: false}, nil
 	default:
-		opts.ControlPlane = true
-		opts.Worker = true
+		return &upgrade.DrainOpts{ControlPlane: true, Worker: true}, nil
 	}
-
-	return opts, nil
 }
 
-func (r *ReleaseReconciler) parseUpgradeConfig(ctx context.Context, manifest *resolver.ResolvedManifest, releaseName string) (config *upgrade.Config, err error) {
-	opts, err := r.parseDrainOpts(ctx)
+func (r *ReleaseReconciler) parseUpgradeConfig(ctx context.Context, manifest *resolver.ResolvedManifest, release *lifecyclev1alpha1.Release) (config *upgrade.Config, err error) {
+	opts, err := r.parseDrainOpts(ctx, release)
 	if err != nil {
 		return nil, fmt.Errorf("parsing drain options: %w", err)
 	}
 
-	return upgrade.NewConfig(manifest, releaseName, opts)
+	return upgrade.NewConfig(manifest, release.Name, opts)
 }
 
 // SetupWithManager sets up the controller with the Manager.
