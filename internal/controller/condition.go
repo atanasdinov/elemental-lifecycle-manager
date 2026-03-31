@@ -69,8 +69,8 @@ func updatePhaseCondition(release *lifecyclev1alpha1.Release, phase upgrade.Phas
 	conditionType := phase.ConditionType()
 	conditionStatus := metav1.ConditionFalse
 
-	if state.State == lifecyclev1alpha1.UpgradeSucceeded {
-		// Only update if not already succeeded to preserve timestamp
+	if state.State == lifecyclev1alpha1.UpgradeSucceeded || state.State == lifecyclev1alpha1.UpgradeSkipped {
+		// Only update if not already succeeded or skipped to preserve timestamp
 		existing := apimeta.FindStatusCondition(release.Status.Conditions, conditionType)
 		if existing != nil && existing.Status == metav1.ConditionTrue {
 			return

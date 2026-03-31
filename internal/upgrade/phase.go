@@ -64,7 +64,7 @@ type Result struct {
 // AllComplete returns true if all phases have succeeded.
 func (r *Result) AllComplete() bool {
 	for _, state := range r.PhaseStates {
-		if state.State != lifecyclev1alpha1.UpgradeSucceeded {
+		if state.State != lifecyclev1alpha1.UpgradeSucceeded && state.State != lifecyclev1alpha1.UpgradeSkipped {
 			return false
 		}
 	}

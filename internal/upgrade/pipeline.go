@@ -64,8 +64,12 @@ func (p *Pipeline) Reconcile(ctx context.Context, config *Config) (*Result, erro
 	}
 
 	for _, handler := range p.handlers {
-		// Skip phases that don't apply to this config
+		// If a reconciler shouldn't reconcile, mark it as skipped.
 		if !handler.ShouldReconcile(config) {
+			result.PhaseStates[handler.Phase()] = &PhaseStatus{
+				State:   lifecyclev1alpha1.UpgradeSkipped,
+				Message: fmt.Sprintf("Upgrade for phase '%s' skipped", handler.Phase()),
+			}
 			continue
 		}
 
