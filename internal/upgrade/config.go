@@ -18,7 +18,6 @@ package upgrade
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/suse/elemental/v3/pkg/manifest/api"
 	"github.com/suse/elemental/v3/pkg/manifest/resolver"
@@ -126,14 +125,9 @@ func NewConfig(manifest *resolver.ResolvedManifest, releaseName string, drainOpt
 		},
 	}
 
-	kubernetesImage, kubernetesVersion := extractKubernetesImage(&core.Components.Systemd)
-	if kubernetesImage == "" {
-		return nil, fmt.Errorf("kubernetes image is required but not found in release manifest")
-	}
-
 	config.Kubernetes = &KubernetesConfig{
-		Image:   kubernetesImage,
-		Version: kubernetesVersion,
+		Image:   core.Components.Kubernetes.Image,
+		Version: core.Components.Kubernetes.Version,
 		// TODO: Populate CoreComponents from the release manifest
 		CoreComponents: nil,
 		DrainOpts:      drainOpts,
@@ -173,25 +167,4 @@ func helmChartConfig(core, product *api.Helm) *HelmChartConfig {
 	}
 
 	return config
-}
-
-func extractKubernetesImage(systemd *api.Systemd) (image string, version string) {
-	if systemd == nil {
-		return "", ""
-	}
-
-	// Extract version from the respective systemd extension
-	for _, ext := range systemd.Extensions {
-		if strings.Contains(ext.Name, "rke2") {
-			image = ext.Image
-			break
-		}
-	}
-
-	res := strings.Split(image, ":")
-	if len(res) != 2 {
-		return "", ""
-	}
-
-	return res[0], res[1]
 }

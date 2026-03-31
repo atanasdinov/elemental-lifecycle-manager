@@ -76,13 +76,9 @@ var _ = Describe("Release Controller", func() {
 						Metadata: &api.Metadata{},
 						Components: core.Components{
 							OperatingSystem: &core.OperatingSystem{},
-							Systemd: api.Systemd{
-								Extensions: []api.SystemdExtension{
-									{
-										Name:  "rke2",
-										Image: "https://foo.bar.com",
-									},
-								},
+							Kubernetes: &core.Kubernetes{
+								Version: "v1.35.2+rke2r1",
+								Image:   "registry.foo.com/rke2-tar:1.35.2_rke2r1",
 							},
 						},
 					},
