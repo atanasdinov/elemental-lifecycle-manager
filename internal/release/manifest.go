@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -50,7 +51,7 @@ func (s sourceReader) Read(m *source.ReleaseManifestSource) ([]byte, error) {
 	img, err := remote.Image(ref,
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithTransport(http.DefaultTransport),
-		remote.WithPlatform(v1.Platform{OS: "linux", Architecture: "amd64"}), // TODO: Parse platform
+		remote.WithPlatform(v1.Platform{OS: runtime.GOOS, Architecture: runtime.GOARCH}), // TODO: revisit this for multi-arch node clusters
 		remote.WithContext(s.ctx),
 	)
 	if err != nil {
