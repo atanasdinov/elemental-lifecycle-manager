@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -152,6 +153,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	var packagedComponentsSnapshotter upgrade.PackagedComponentsSnapshotter
+	var packagedComponentsVerifier upgrade.PackagedComponentsVerifier
+	switch {
+	case strings.Contains(serverVersion.GitVersion, "rke2"):
+		packagedComponentsSnapshotter = upgrade.NewRKE2PackagedComponentSnapshotter(k8sClient, helmClient, nil)
+		packagedComponentsVerifier = upgrade.NewRKE2PackagedComponentsVerifier(k8sClient, helmClient, nil)
+	}
+
 	sucPlanReconciler := upgrade.NewSUCPlanReconciler(k8sClient)
 	if err = (&controller.ReleaseReconciler{
 		Client:           k8sClient,
@@ -159,7 +168,12 @@ func main() {
 		RetrieveManifest: release.RetrieveManifest,
 		Pipeline: upgrade.NewPipeline(
 			upgrade.NewOSReconciler(k8sClient, sucPlanReconciler),
-			upgrade.NewKubernetesReconciler(k8sClient, helmClient, sucPlanReconciler),
+			upgrade.NewKubernetesReconciler(
+				k8sClient,
+				sucPlanReconciler,
+				packagedComponentsSnapshotter,
+				packagedComponentsVerifier,
+			),
 			upgrade.NewHelmReconciler(k8sClient, helmClient),
 		),
 	}).SetupWithManager(mgr); err != nil {

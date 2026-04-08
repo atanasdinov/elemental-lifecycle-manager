@@ -65,6 +65,7 @@ type ReleaseInfo struct {
 	ChartVersion string
 	Namespace    string
 	Config       map[string]any
+	Revisions    int
 }
 
 // Client provides access to Helm release information.
@@ -111,5 +112,6 @@ func (c *StorageClient) RetrieveRelease(name string) (*ReleaseInfo, error) {
 		ChartVersion: release.Chart.Metadata.Version,
 		Namespace:    release.Namespace,
 		Config:       release.Config,
+		Revisions:    release.Version,
 	}, nil
 }
