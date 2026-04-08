@@ -156,7 +156,7 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 
 func (r *KubernetesReconciler) preparePlans(ctx context.Context, config *Config) (plans []*upgradecattlev1.Plan, err error) {
 	k8sConfig := config.Kubernetes
-	cpPlan := plan.KubernetesControlPlane(config.ReleaseNamespacedName.Name, k8sConfig.Image, k8sConfig.Version, k8sConfig.DrainOpts.ControlPlane)
+	cpPlan := plan.KubernetesControlPlane(config.ReleaseNamespacedName.Name, config.Version, k8sConfig.Version, k8sConfig.DrainOpts.ControlPlane)
 	planList := []*upgradecattlev1.Plan{cpPlan}
 
 	allNodes := &corev1.NodeList{}
@@ -165,7 +165,7 @@ func (r *KubernetesReconciler) preparePlans(ctx context.Context, config *Config)
 	}
 
 	if !isControlPlaneOnlyCluster(allNodes.Items) {
-		wkPlan := plan.KubernetesWorker(config.ReleaseNamespacedName.Name, k8sConfig.Image, k8sConfig.Version, k8sConfig.DrainOpts.Worker)
+		wkPlan := plan.KubernetesWorker(config.ReleaseNamespacedName.Name, config.Version, k8sConfig.Version, k8sConfig.DrainOpts.Worker)
 		planList = append(planList, wkPlan)
 	}
 
