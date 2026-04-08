@@ -57,7 +57,7 @@ func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseSta
 	logger.Info("Reconciling OS upgrade",
 		"image", osConfig.Image,
 		"version", osConfig.Version,
-		"release", config.ReleaseName)
+		"release", config.ReleaseNamespacedName.Name)
 
 	plans, err := r.preparePlans(ctx, config)
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseSta
 
 func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans []*upgradecattlev1.Plan, err error) {
 	osConfig := config.OS
-	cpPlan := plan.OSControlPlane(config.ReleaseName, osConfig.Image, osConfig.Version, osConfig.DrainOpts.ControlPlane)
+	cpPlan := plan.OSControlPlane(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.ControlPlane)
 	planList := []*upgradecattlev1.Plan{cpPlan}
 
 	allNodes := &corev1.NodeList{}
@@ -109,7 +109,7 @@ func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans 
 	}
 
 	if !isControlPlaneOnlyCluster(allNodes.Items) {
-		wkPlan := plan.OSWorker(config.ReleaseName, osConfig.Image, osConfig.Version, osConfig.DrainOpts.Worker)
+		wkPlan := plan.OSWorker(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.Worker)
 		planList = append(planList, wkPlan)
 	}
 

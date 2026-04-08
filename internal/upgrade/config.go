@@ -21,12 +21,13 @@ import (
 
 	"github.com/suse/elemental/v3/pkg/manifest/api"
 	"github.com/suse/elemental/v3/pkg/manifest/resolver"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Config represents a complete upgrade specification for all phases.
 type Config struct {
-	// ReleaseName is the name of the Release resource.
-	ReleaseName string
+	// ReleaseNamespacedName is the name and namespace of the Release resource.
+	ReleaseNamespacedName types.NamespacedName
 	// Version is the target release version.
 	Version string
 	// OS contains the SUC Plan configuration for OS upgrades.
@@ -43,8 +44,6 @@ type OSConfig struct {
 	Image string
 	// Version is the target version.
 	Version string
-	// TODO: Populate this from the manifest.
-	PrettyName string
 	// DrainOpts specifies which nodes should be drained before operating system upgrades.
 	DrainOpts *DrainOpts
 }
@@ -55,9 +54,6 @@ type KubernetesConfig struct {
 	Image string
 	// Version is the target version.
 	Version string
-	// CoreComponents lists additional components that must be verified after node upgrades.
-	// Used to verify RKE2 components (CoreDNS, ingress, etc.) are ready.
-	CoreComponents []CoreComponent
 	// DrainOpts specifies which nodes should be drained before Kubernetes upgrades.
 	DrainOpts *DrainOpts
 }
@@ -68,30 +64,6 @@ type DrainOpts struct {
 	ControlPlane bool
 	// Worker specifies that worker nodes need to be drained
 	Worker bool
-}
-
-// CoreComponentType identifies the type of Kubernetes core component.
-type CoreComponentType string
-
-const (
-	// CoreComponentHelmChart indicates the component is managed by a HelmChart resource.
-	CoreComponentHelmChart CoreComponentType = "HelmChart"
-	// CoreComponentDeployment indicates the component is a Deployment.
-	CoreComponentDeployment CoreComponentType = "Deployment"
-)
-
-// CoreComponent represents a Kubernetes core component that must be verified during upgrades.
-// These are components bundled with the Kubernetes distribution (e.g., RKE2) that may still
-// be upgrading even after nodes report the correct kubelet version.
-type CoreComponent struct {
-	// Name is the resource name of the component.
-	Name string
-	// Type is the kind of resource (HelmChart or Deployment).
-	Type CoreComponentType
-	// Version is the expected version after upgrade.
-	Version string
-	// Containers maps container names to expected images (used for Deployment type).
-	Containers map[string]string
 }
 
 // HelmChartConfig contains configuration for Helm Controller HelmChart resources.
@@ -105,7 +77,7 @@ type HelmChartConfig struct {
 // NewConfig creates a release upgrade specification from the resolved manifest.
 // The upgrade is built by extracting configuration from the core platform
 // and optionally merging with product extension components.
-func NewConfig(manifest *resolver.ResolvedManifest, releaseName string, drainOpts *DrainOpts) (*Config, error) {
+func NewConfig(manifest *resolver.ResolvedManifest, releaseNamespacedName types.NamespacedName, drainOpts *DrainOpts) (*Config, error) {
 	if manifest == nil {
 		return nil, fmt.Errorf("manifest is nil")
 	}
@@ -116,8 +88,8 @@ func NewConfig(manifest *resolver.ResolvedManifest, releaseName string, drainOpt
 
 	core := manifest.CorePlatform
 	config := &Config{
-		ReleaseName: releaseName,
-		Version:     core.Metadata.Version,
+		ReleaseNamespacedName: releaseNamespacedName,
+		Version:               core.Metadata.Version,
 		OS: &OSConfig{
 			Image:     core.Components.OperatingSystem.Image.Base,
 			Version:   core.Metadata.Version,
@@ -126,11 +98,9 @@ func NewConfig(manifest *resolver.ResolvedManifest, releaseName string, drainOpt
 	}
 
 	config.Kubernetes = &KubernetesConfig{
-		Image:   core.Components.Kubernetes.Image,
-		Version: core.Components.Kubernetes.Version,
-		// TODO: Populate CoreComponents from the release manifest
-		CoreComponents: nil,
-		DrainOpts:      drainOpts,
+		Image:     core.Components.Kubernetes.Image,
+		Version:   core.Components.Kubernetes.Version,
+		DrainOpts: drainOpts,
 	}
 
 	if manifest.ProductExtension == nil {

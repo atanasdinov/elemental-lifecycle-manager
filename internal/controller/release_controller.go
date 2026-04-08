@@ -24,6 +24,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -244,7 +245,7 @@ func (r *ReleaseReconciler) parseUpgradeConfig(ctx context.Context, manifest *re
 		return nil, fmt.Errorf("parsing drain options: %w", err)
 	}
 
-	return upgrade.NewConfig(manifest, release.Name, opts)
+	return upgrade.NewConfig(manifest, types.NamespacedName{Name: release.Name, Namespace: release.Namespace}, opts)
 }
 
 // SetupWithManager sets up the controller with the Manager.

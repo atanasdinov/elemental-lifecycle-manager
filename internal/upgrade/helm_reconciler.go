@@ -79,7 +79,7 @@ func (r *HelmReconciler) ShouldReconcile(config *Config) bool {
 }
 
 func (r *HelmReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
-	return r.reconcileHelmCharts(ctx, config.ReleaseName, config.Version, config.HelmCharts)
+	return r.reconcileHelmCharts(ctx, config.ReleaseNamespacedName.Name, config.Version, config.HelmCharts)
 }
 
 // reconcileHelmCharts ensures the HelmChart resources exist and are up to date.
