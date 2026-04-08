@@ -67,6 +67,10 @@ func basePlan(name string, drain bool) *upgradecattlev1.Plan {
 			IgnoreDaemonSets:   &ignoreDaemonSets,
 			Force:              true,
 		}
+	} else {
+		// By default when drain is enabled, cordon is enabled as well,
+		// so if drain is disabled we need to ensure the node is cordoned.
+		plan.Spec.Cordon = true
 	}
 
 	return plan

@@ -28,10 +28,10 @@ import (
 
 var _ = Describe("Kubernetes plan tests", func() {
 	const (
-		releaseName = "test-release"
-		k8sImage    = "registry.example.com/rke2:1.35.0"
-		version     = "0.6.0"
-		drain       = true
+		releaseName    = "test-release"
+		releaseVersion = "0.6.0"
+		k8sVersion     = "1.35.0"
+		drain          = true
 	)
 
 	Describe("kubernetesControlPlaneName", func() {
@@ -62,7 +62,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 		var plan *upgradecattlev1.Plan
 
 		BeforeAll(func() {
-			plan = KubernetesControlPlane(releaseName, k8sImage, version, drain)
+			plan = KubernetesControlPlane(releaseName, releaseVersion, k8sVersion, drain)
 		})
 
 		It("creates a plan with correct metadata", func() {
@@ -79,7 +79,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 		})
 
 		It("sets correct spec version", func() {
-			Expect(plan.Spec.Version).To(Equal(version))
+			Expect(plan.Spec.Version).To(Equal(k8sVersion))
 		})
 
 		It("sets concurrency to 1", func() {
@@ -98,7 +98,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 
 		It("configures upgrade container with base image", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
-			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
+			Expect(plan.Spec.Upgrade.Image).To(Equal(rke2UpgradeImage))
 		})
 
 		It("enables drain with correct settings", func() {
@@ -114,7 +114,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 		var plan *upgradecattlev1.Plan
 
 		BeforeAll(func() {
-			plan = KubernetesWorker(releaseName, k8sImage, version, drain)
+			plan = KubernetesWorker(releaseName, releaseVersion, k8sVersion, drain)
 		})
 
 		It("creates a plan with correct metadata", func() {
@@ -131,7 +131,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 		})
 
 		It("sets correct spec version", func() {
-			Expect(plan.Spec.Version).To(Equal(version))
+			Expect(plan.Spec.Version).To(Equal(k8sVersion))
 		})
 
 		It("sets concurrency to 1", func() {

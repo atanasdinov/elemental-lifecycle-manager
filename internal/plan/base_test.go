@@ -60,4 +60,22 @@ var _ = Describe("Base plan tests", func() {
 		Expect(plan.Spec.Drain.Force).To(BeTrue())
 		Expect(plan.Spec.Drain.Timeout.String()).To(Equal("15m"))
 	})
+
+	It("Properly creates a plan without draining options", func() {
+		plan := basePlan("plan-1", false)
+
+		Expect(plan).ToNot(BeNil())
+		Expect(plan.TypeMeta.Kind).To(Equal("Plan"))
+		Expect(plan.TypeMeta.APIVersion).To(Equal("upgrade.cattle.io/v1"))
+
+		Expect(plan.ObjectMeta.Name).To(Equal("plan-1"))
+		Expect(plan.ObjectMeta.Namespace).To(Equal("cattle-system"))
+		Expect(plan.ObjectMeta.Labels).To(BeEmpty())
+		Expect(plan.ObjectMeta.Annotations).To(BeEmpty())
+
+		Expect(plan.Spec.ServiceAccountName).To(Equal("system-upgrade-controller"))
+
+		Expect(plan.Spec.Drain).To(BeNil())
+		Expect(plan.Spec.Cordon).To(BeTrue())
+	})
 })

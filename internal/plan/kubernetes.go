@@ -27,6 +27,7 @@ import (
 const (
 	kubernetesControlPlaneBaseName = "elemental-kubernetes-control-plane"
 	kubernetesWorkerBaseName       = "elemental-kubernetes-worker"
+	rke2UpgradeImage               = "rancher/rke2-upgrade"
 )
 
 // kubernetesControlPlaneName returns the full plan name for the given version.
@@ -40,15 +41,13 @@ func kubernetesWorkerName(version string) string {
 }
 
 // KubernetesControlPlane builds a SUC Plan for Kubernetes upgrades on control plane nodes.
-func KubernetesControlPlane(releaseName, k8sImage, releaseVersion string, drain bool) *upgradecattlev1.Plan {
-	k8sVersion := parseVersion(k8sImage)
-
+func KubernetesControlPlane(releaseName, releaseVersion, k8sVersion string, drain bool) *upgradecattlev1.Plan {
 	p := basePlan(kubernetesControlPlaneName(k8sVersion), drain)
 	p.Labels = map[string]string{
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
 	}
-	p.Spec.Version = releaseVersion
+	p.Spec.Version = k8sVersion
 	p.Spec.Concurrency = 1
 	p.Spec.NodeSelector = &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -60,24 +59,22 @@ func KubernetesControlPlane(releaseName, k8sImage, releaseVersion string, drain 
 		},
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
-		Image: upgradeImage,
-		// TODO: Fill in upgrade execution
-		Command: []string{""},
-		Args:    []string{""},
+		Image: rke2UpgradeImage,
 	}
 	return p
 }
 
 // KubernetesWorker builds a SUC Plan for Kubernetes upgrades on worker nodes.
-func KubernetesWorker(releaseName, k8sImage, releaseVersion string, drain bool) *upgradecattlev1.Plan {
-	k8sVersion := parseVersion(k8sImage)
+func KubernetesWorker(releaseName, releaseVersion, k8sVersion string, drain bool) *upgradecattlev1.Plan {
+	controlPlanePlanName := kubernetesControlPlaneName(k8sVersion)
 
 	p := basePlan(kubernetesWorkerName(k8sVersion), drain)
 	p.Labels = map[string]string{
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
 	}
-	p.Spec.Version = releaseVersion
+
+	p.Spec.Version = k8sVersion
 	p.Spec.Concurrency = 1
 	p.Spec.NodeSelector = &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -88,10 +85,17 @@ func KubernetesWorker(releaseName, k8sImage, releaseVersion string, drain bool) 
 			},
 		},
 	}
+	p.Spec.Prepare = &upgradecattlev1.ContainerSpec{
+		// Ensures the upgrade for workers will happen only when the
+		// control plane SUCPlan has completed.
+		Args: []string{
+			"prepare",
+			controlPlanePlanName,
+		},
+		Image: upgradeImage,
+	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
-		// TODO: Fill in upgrade execution
-		Command: []string{""},
-		Args:    []string{""},
+		Image: rke2UpgradeImage,
 	}
 	return p
 }
