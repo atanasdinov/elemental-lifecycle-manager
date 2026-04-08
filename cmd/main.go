@@ -23,6 +23,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/client-go/discovery"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -136,6 +137,18 @@ func main() {
 	helmClient, err := helm.NewClient()
 	if err != nil {
 		setupLog.Error(err, "unable to create helm client")
+		os.Exit(1)
+	}
+
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to setup discovery client")
+		os.Exit(1)
+	}
+
+	serverVersion, err := discoveryClient.ServerVersion()
+	if err != nil {
+		setupLog.Error(err, "unable to parse server version")
 		os.Exit(1)
 	}
 
