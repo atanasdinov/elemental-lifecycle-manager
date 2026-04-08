@@ -152,13 +152,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	sucPlanReconciler := upgrade.NewSUCPlanReconciler(k8sClient)
 	if err = (&controller.ReleaseReconciler{
 		Client:           k8sClient,
 		Scheme:           mgr.GetScheme(),
 		RetrieveManifest: release.RetrieveManifest,
 		Pipeline: upgrade.NewPipeline(
-			upgrade.NewOSReconciler(k8sClient, nil),
-			upgrade.NewKubernetesReconciler(k8sClient, helmClient, nil),
+			upgrade.NewOSReconciler(k8sClient, sucPlanReconciler),
+			upgrade.NewKubernetesReconciler(k8sClient, helmClient, sucPlanReconciler),
 			upgrade.NewHelmReconciler(k8sClient, helmClient),
 		),
 	}).SetupWithManager(mgr); err != nil {

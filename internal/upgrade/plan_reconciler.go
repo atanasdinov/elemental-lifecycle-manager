@@ -40,11 +40,15 @@ type PlanReconciler interface {
 	Reconcile(ctx context.Context, desired *upgradecattlev1.Plan) (*PlanResult, error)
 }
 
-type planReconciler struct {
+type SUCPlanReconciler struct {
 	client.Client
 }
 
-func (p *planReconciler) Reconcile(ctx context.Context, desired *upgradecattlev1.Plan) (*PlanResult, error) {
+func NewSUCPlanReconciler(c client.Client) *SUCPlanReconciler {
+	return &SUCPlanReconciler{Client: c}
+}
+
+func (p *SUCPlanReconciler) Reconcile(ctx context.Context, desired *upgradecattlev1.Plan) (*PlanResult, error) {
 	plan, err := p.getOrCreatePlan(ctx, desired)
 	if err != nil {
 		return nil, fmt.Errorf("parsing plan: %w", err)
@@ -66,7 +70,7 @@ func (p *planReconciler) Reconcile(ctx context.Context, desired *upgradecattlev1
 	return result, nil
 }
 
-func (p *planReconciler) getOrCreatePlan(ctx context.Context, desired *upgradecattlev1.Plan) (plan *upgradecattlev1.Plan, err error) {
+func (p *SUCPlanReconciler) getOrCreatePlan(ctx context.Context, desired *upgradecattlev1.Plan) (plan *upgradecattlev1.Plan, err error) {
 	logger := log.FromContext(ctx)
 
 	plan = &upgradecattlev1.Plan{}
@@ -90,7 +94,7 @@ func (p *planReconciler) getOrCreatePlan(ctx context.Context, desired *upgradeca
 	return plan, nil
 }
 
-func (p *planReconciler) listNodesForPlan(ctx context.Context, plan *upgradecattlev1.Plan) (nodes *corev1.NodeList, err error) {
+func (p *SUCPlanReconciler) listNodesForPlan(ctx context.Context, plan *upgradecattlev1.Plan) (nodes *corev1.NodeList, err error) {
 	selector, err := metav1.LabelSelectorAsSelector(plan.Spec.NodeSelector)
 	if err != nil {
 		return nil, fmt.Errorf("parsing node selector: %w", err)

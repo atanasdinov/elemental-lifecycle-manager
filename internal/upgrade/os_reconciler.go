@@ -36,10 +36,6 @@ type OSReconciler struct {
 }
 
 func NewOSReconciler(c client.Client, sucReconciler PlanReconciler) *OSReconciler {
-	if sucReconciler == nil {
-		sucReconciler = &planReconciler{Client: c}
-	}
-
 	return &OSReconciler{Client: c, sucReconciler: sucReconciler}
 }
 
