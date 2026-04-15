@@ -17,7 +17,10 @@ limitations under the License.
 package plan
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
+	"text/template"
 
 	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
@@ -25,31 +28,12 @@ import (
 )
 
 const (
-	osControlPlaneBaseName     = "elemental-os-control-plane"
-	osWorkerBaseName           = "elemental-os-worker"
-	basicUpgradeScriptTemplate = `
-ELEMENTAL_PATH="/var/lib/elemental"
-UPGRADE_SUCCESS_FLAG="$ELEMENTAL_PATH/.os-upgrade-successful"
-
-mkdir -p "$ELEMENTAL_PATH"
-if [ -f "$UPGRADE_SUCCESS_FLAG" ]; then
-  echo "Upgrade already done. Exiting."
-  rm -f "$UPGRADE_SUCCESS_FLAG"
-  exit 0
-fi
-
-elemental3ctl --debug upgrade --os-image "%s"
-rc=$?
-
-if [ "$rc" -ne 0 ]; then
-  exit "$rc"
-fi
-
-touch "$UPGRADE_SUCCESS_FLAG"
-sync
-reboot
-`
+	osControlPlaneBaseName = "elemental-os-control-plane"
+	osWorkerBaseName       = "elemental-os-worker"
 )
+
+//go:embed templates/os-upgrade.sh.tpl
+var osUpgradeScriptTpl string
 
 // osControlPlaneName returns the full plan name for the given version.
 func osControlPlaneName(version string) string {
@@ -63,10 +47,14 @@ func osWorkerName(version string) string {
 
 // OSControlPlane builds a SUC Plan for OS upgrades on control plane nodes.
 // Control plane nodes are upgraded first, without waiting for workers.
-func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) *upgradecattlev1.Plan {
-	osVersion := parseVersion(osImage)
+func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
+	repo, version := parseImage(osImage)
+	script, err := parseUpgradeScript(repo, version)
+	if err != nil {
+		return nil, fmt.Errorf("parsing OS upgrade script: %w", err)
+	}
 
-	p := basePlan(osControlPlaneName(osVersion), drain)
+	p := basePlan(osControlPlaneName(version), drain)
 	p.Labels = map[string]string{
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
@@ -86,18 +74,22 @@ func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) *up
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
 		Image:   upgradeImage,
-		Command: []string{"chroot", "/host", "/bin/sh", "-c"},
-		Args:    []string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)},
+		Command: []string{"/bin/sh", "-c"},
+		Args:    []string{script},
 	}
-	return p
+	return p, nil
 }
 
 // OSWorker builds a SUC Plan for OS upgrades on worker nodes.
 // Worker nodes wait for control plane upgrades to complete before starting.
-func OSWorker(releaseName, osImage, releaseVersion string, drain bool) *upgradecattlev1.Plan {
-	osVersion := parseVersion(osImage)
+func OSWorker(releaseName, osImage, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
+	repo, version := parseImage(osImage)
+	script, err := parseUpgradeScript(repo, version)
+	if err != nil {
+		return nil, fmt.Errorf("parsing OS upgrade script: %w", err)
+	}
 
-	p := basePlan(osWorkerName(osVersion), drain)
+	p := basePlan(osWorkerName(version), drain)
 	p.Labels = map[string]string{
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
@@ -117,8 +109,30 @@ func OSWorker(releaseName, osImage, releaseVersion string, drain bool) *upgradec
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
 		Image:   upgradeImage,
-		Command: []string{"chroot", "/host", "/bin/sh", "-c"},
-		Args:    []string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)},
+		Command: []string{"/bin/sh", "-c"},
+		Args:    []string{script},
 	}
-	return p
+	return p, nil
+}
+
+func parseUpgradeScript(repo, version string) (string, error) {
+	tmpl, err := template.New("os-upgrade").Parse(osUpgradeScriptTpl)
+	if err != nil {
+		return "", fmt.Errorf("allocating template for OS upgrade script: %w", err)
+	}
+
+	data := struct {
+		OSImageRepo    string
+		OSImageVersion string
+	}{
+		OSImageRepo:    repo,
+		OSImageVersion: version,
+	}
+
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); err != nil {
+		return "", fmt.Errorf("applying template for OS upgrade script: %w", err)
+	}
+
+	return out.String(), nil
 }

@@ -76,7 +76,7 @@ func basePlan(name string, drain bool) *upgradecattlev1.Plan {
 	return plan
 }
 
-func parseVersion(image string) string {
+func parseImage(image string) (repo, tag string) {
 	i := strings.LastIndex(image, ":")
 
 	// Find the last slash to ensure the colon we found
@@ -84,8 +84,8 @@ func parseVersion(image string) string {
 	lastSlash := strings.LastIndex(image, "/")
 
 	if i == -1 || i < lastSlash {
-		return "latest"
+		return image, "latest"
 	}
 
-	return image[i+1:]
+	return image[:i], image[i+1:]
 }

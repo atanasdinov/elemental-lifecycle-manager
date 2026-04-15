@@ -17,8 +17,6 @@ limitations under the License.
 package plan
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -30,10 +28,36 @@ import (
 
 var _ = Describe("OS plan tests", func() {
 	const (
-		releaseName = "test-release"
-		osImage     = "registry.example.com/elemental-os:1.2.3"
-		version     = "0.6.0"
-		drain       = true
+		releaseName           = "test-release"
+		osImage               = "registry.example.com/elemental-os:1.2.3"
+		version               = "0.6.0"
+		drain                 = true
+		expectedUpgradeScript = `HOST="${HOST:-/host}"
+DEPLOYMENT="${DEPLOYMENT:-$HOST/etc/elemental/deployment.yaml}"
+OS_IMAGE_REPO="registry.example.com/elemental-os"
+OS_VERSION="1.2.3"
+INCOMING="$OS_IMAGE_REPO:$OS_VERSION"
+CURRENT=$(grep -F "uri: oci://$OS_IMAGE_REPO" "$DEPLOYMENT" 2>/dev/null)
+
+# On fresh systems, we have a sourceOS specified with raw (e.g. raw://../squashfs.img) data
+# instead of from an OCI image, so for instances that CURRENT is empty we
+# assume that this is a fresh system and proceed with the upgrade.
+if [ -n "$CURRENT" ]; then
+	# Extract the prefix (e.g. "uri: oci://") before the OS_IMAGE_REPO,
+	# so that it can be stripped in the next step.
+    prefix=${CURRENT%%"$OS_IMAGE_REPO"*}
+	CURRENT=${CURRENT#"$prefix"}
+    if [ "$CURRENT" = "$INCOMING" ]; then
+        echo "Active OS image is already at correct version $OS_VERSION. Upgrade has been performed."
+        exit 0
+    fi
+fi
+
+chroot "$HOST" /bin/sh -c "
+  elemental3ctl --debug upgrade --os-image '$INCOMING' &&
+  reboot
+"
+`
 	)
 
 	Describe("osControlPlaneName", func() {
@@ -64,7 +88,9 @@ var _ = Describe("OS plan tests", func() {
 		var plan *upgradecattlev1.Plan
 
 		BeforeAll(func() {
-			plan = OSControlPlane(releaseName, osImage, version, drain)
+			var err error
+			plan, err = OSControlPlane(releaseName, osImage, version, drain)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("creates a plan with correct metadata", func() {
@@ -101,8 +127,8 @@ var _ = Describe("OS plan tests", func() {
 		It("configures upgrade container", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
 			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
-			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"chroot", "/host", "/bin/sh", "-c"}))
-			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)}))
+			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"/bin/sh", "-c"}))
+			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{expectedUpgradeScript}))
 		})
 
 		It("enables drain with correct settings", func() {
@@ -118,7 +144,9 @@ var _ = Describe("OS plan tests", func() {
 		var plan *upgradecattlev1.Plan
 
 		BeforeAll(func() {
-			plan = OSWorker(releaseName, osImage, version, drain)
+			var err error
+			plan, err = OSWorker(releaseName, osImage, version, drain)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("creates a plan with correct metadata", func() {
@@ -155,8 +183,8 @@ var _ = Describe("OS plan tests", func() {
 		It("configures upgrade container", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
 			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
-			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"chroot", "/host", "/bin/sh", "-c"}))
-			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{fmt.Sprintf(basicUpgradeScriptTemplate, osImage)}))
+			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"/bin/sh", "-c"}))
+			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{expectedUpgradeScript}))
 		})
 
 		It("enables drain with correct settings", func() {

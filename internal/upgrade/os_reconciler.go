@@ -96,7 +96,11 @@ func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseSta
 
 func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans []*upgradecattlev1.Plan, err error) {
 	osConfig := config.OS
-	cpPlan := plan.OSControlPlane(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.ControlPlane)
+	cpPlan, err := plan.OSControlPlane(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.ControlPlane)
+	if err != nil {
+		return nil, fmt.Errorf("generating OS control-plane plan: %w", err)
+	}
+
 	planList := []*upgradecattlev1.Plan{cpPlan}
 
 	allNodes := &corev1.NodeList{}
@@ -105,7 +109,10 @@ func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans 
 	}
 
 	if !isControlPlaneOnlyCluster(allNodes.Items) {
-		wkPlan := plan.OSWorker(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.Worker)
+		wkPlan, err := plan.OSWorker(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.Worker)
+		if err != nil{
+			return nil, fmt.Errorf("generating OS worker plan: %w", err)
+		}
 		planList = append(planList, wkPlan)
 	}
 
