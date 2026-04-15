@@ -112,7 +112,7 @@ func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
 	if len(p.Status.Applying) > 0 {
 		return &PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeInProgress,
-			Message: fmt.Sprintf("Plan '%s' is cuurently applying on: %s", p.Name, p.Status.Applying),
+			Message: fmt.Sprintf("Plan %s is cuurently applying on: %s", p.Name, p.Status.Applying),
 		}
 	}
 
@@ -121,13 +121,13 @@ func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
 			if cond.Status == corev1.ConditionTrue {
 				return &PhaseStatus{
 					State:   lifecyclev1alpha1.PlanComplete,
-					Message: fmt.Sprintf("Plan '%s' execution completed successfully", p.Name),
+					Message: fmt.Sprintf("Plan %s execution completed successfully", p.Name),
 				}
 			}
 			if cond.Status == corev1.ConditionFalse && cond.Reason != "" {
 				return &PhaseStatus{
 					State:   lifecyclev1alpha1.UpgradeFailed,
-					Message: fmt.Sprintf("Plan '%s' failed: %s", p.Name, cond.Message),
+					Message: fmt.Sprintf("Plan %s failed: %s", p.Name, cond.Message),
 				}
 			}
 		}
@@ -135,6 +135,6 @@ func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
 
 	return &PhaseStatus{
 		State:   lifecyclev1alpha1.UpgradeInProgress,
-		Message: fmt.Sprintf("Plan '%s' execution in progress", p.Name),
+		Message: fmt.Sprintf("Plan %s execution in progress", p.Name),
 	}
 }
