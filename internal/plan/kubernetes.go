@@ -92,7 +92,7 @@ func KubernetesWorker(releaseName, releaseVersion, k8sVersion string, drain bool
 			"prepare",
 			controlPlanePlanName,
 		},
-		Image: upgradeImage,
+		Image: rke2UpgradeImage,
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
 		Image: rke2UpgradeImage,
