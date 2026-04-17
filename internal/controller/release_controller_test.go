@@ -70,7 +70,8 @@ var _ = Describe("Release Controller", func() {
 				Expect(k8sClient.Create(defaultCtx, defaultRelease)).To(Succeed())
 			}
 
-			defaultManifestRetrieve = func(ctx context.Context, registry, version string) (*resolver.ResolvedManifest, error) {
+			defaultManifestRetrieve = func(_ context.Context, _, _ string) (*resolver.ResolvedManifest, error) { //nolint:unparam
+
 				return &resolver.ResolvedManifest{
 					CorePlatform: &core.ReleaseManifest{
 						Metadata: &api.Metadata{},

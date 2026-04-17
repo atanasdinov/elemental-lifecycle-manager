@@ -132,7 +132,7 @@ func (h *RKE2PackagedComponentsHandler) createSnapshot(ctx context.Context, snap
 		"namespace", snapshot.Namespace,
 		"owner", config.ReleaseNamespacedName.Name,
 	)
-	return h.Client.Create(ctx, snapshot)
+	return h.Create(ctx, snapshot)
 }
 
 func (h *RKE2PackagedComponentsHandler) populateSnapshot(ctx context.Context, snapshot *corev1.ConfigMap) error {

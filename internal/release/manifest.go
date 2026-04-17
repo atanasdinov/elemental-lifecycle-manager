@@ -59,7 +59,9 @@ func (s sourceReader) Read(m *source.ReleaseManifestSource) ([]byte, error) {
 	}
 
 	imageReadCloser := mutate.Extract(img)
-	defer imageReadCloser.Close()
+	defer func() {
+		_ = imageReadCloser.Close()
+	}()
 
 	tarReader := tar.NewReader(imageReadCloser)
 	for {

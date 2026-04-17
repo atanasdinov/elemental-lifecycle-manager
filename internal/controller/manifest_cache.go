@@ -91,7 +91,7 @@ func (c *ManifestCache) Set(ctx context.Context, namespace, version string, mani
 				version: string(data),
 			},
 		}
-		return c.Client.Create(ctx, configMap)
+		return c.Create(ctx, configMap)
 	}
 
 	if err != nil {
@@ -103,7 +103,7 @@ func (c *ManifestCache) Set(ctx context.Context, namespace, version string, mani
 	}
 	configMap.Data[version] = string(data)
 
-	return c.Client.Update(ctx, configMap)
+	return c.Update(ctx, configMap)
 }
 
 // getOrRetrieveManifest returns a cached manifest or fetches it from the registry.

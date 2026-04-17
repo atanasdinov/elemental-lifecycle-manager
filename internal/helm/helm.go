@@ -98,7 +98,7 @@ func NewClient() (*StorageClient, error) {
 
 // RetrieveRelease retrieves the latest Helm release by name.
 func (c *StorageClient) RetrieveRelease(name string) (*ReleaseInfo, error) {
-	rel, err := c.Storage.Last(name)
+	rel, err := c.Last(name)
 	if err != nil {
 		return nil, err
 	}

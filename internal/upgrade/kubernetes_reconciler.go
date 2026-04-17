@@ -87,7 +87,7 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 
 	snapshot, err := r.packagedComponentsHandler.GenerateSnapshot(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("generating Kubernetes pacakged components snapshot: %w", err)
+		return nil, fmt.Errorf("generating Kubernetes packaged components snapshot: %w", err)
 	}
 
 	plans, err := r.preparePlans(ctx, config)
