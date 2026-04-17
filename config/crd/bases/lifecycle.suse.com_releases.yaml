@@ -117,6 +117,11 @@ spec:
                   - type
                   type: object
                 type: array
+              observedGeneration:
+                description: ObservedGeneration is the latest generation observed
+                  by the controller. Meant for internal use only.
+                format: int64
+                type: integer
               version:
                 description: Version is the currently applied release version.
                 type: string

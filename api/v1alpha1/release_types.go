@@ -98,6 +98,8 @@ type ReleaseStatus struct {
 	Version string `json:"version"`
 	// Conditions represent the current state of the release upgrade.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// ObservedGeneration is the latest generation observed by the controller. Meant for internal use only.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true

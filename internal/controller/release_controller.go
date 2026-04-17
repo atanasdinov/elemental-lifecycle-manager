@@ -100,7 +100,14 @@ func (r *ReleaseReconciler) reconcileNormal(ctx context.Context, release *lifecy
 		"version", release.Spec.Version,
 		"registry", release.Spec.Registry)
 
-	initializePendingConditions(release, r.Pipeline.Phases())
+	if release.Status.ObservedGeneration != release.Generation {
+		release.Status.ObservedGeneration = release.Generation
+		release.Status.Conditions = nil
+		initializePendingConditions(release, r.Pipeline.Phases())
+
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	defer updateAppliedCondition(release, r.Pipeline.Phases())
 
 	manifest, err := r.getOrRetrieveManifest(ctx, release)

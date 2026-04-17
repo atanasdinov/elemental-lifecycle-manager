@@ -36,8 +36,14 @@ func setCondition(release *lifecyclev1alpha1.Release, conditionType string, stat
 	})
 }
 
-// initializePendingConditions sets pending conditions for phases that don't have a condition yet.
+// initializePendingConditions sets pending conditions for both the manifest and upgrade phases.
 func initializePendingConditions(release *lifecyclev1alpha1.Release, phases []upgrade.Phase) {
+	existing := apimeta.FindStatusCondition(release.Status.Conditions, lifecyclev1alpha1.ConditionManifestResolved)
+	if existing == nil {
+		setCondition(release, lifecyclev1alpha1.ConditionManifestResolved, metav1.ConditionFalse,
+			lifecyclev1alpha1.UpgradePending, "Waiting for release manifest to be resolved")
+	}
+
 	for _, phase := range phases {
 		conditionType := phase.ConditionType()
 		existing := apimeta.FindStatusCondition(release.Status.Conditions, conditionType)
