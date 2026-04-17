@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -68,17 +70,29 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	logger.Info("Reconciling Release")
 
 	release := &lifecyclev1alpha1.Release{}
-
 	if err := r.Get(ctx, req.NamespacedName, release); err != nil {
 		logger.Error(err, "unable to fetch Release")
-
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Store original Release resource status before any reconciliation has been done
+	originalStatus := release.Status.DeepCopy()
 	result, err := r.reconcileNormal(ctx, release)
 
-	// Attempt to update the release status before returning.
-	return result, errors.Join(err, r.Status().Update(ctx, release))
+	// Ensure that a change to the state of the Release resource has actually been done
+	// before doing any Release resource updates
+	if !equality.Semantic.DeepEqual(*originalStatus, release.Status) {
+		if statusErr := r.updateReleaseStatus(ctx, req.NamespacedName, release.Status); statusErr != nil {
+			return ctrl.Result{}, errors.Join(err, statusErr)
+		}
+	}
+
+	// Handle reconcileNormal errors only when the Release status has been updated (if needed).
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
 }
 func (r *ReleaseReconciler) reconcileNormal(ctx context.Context, release *lifecyclev1alpha1.Release) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -247,6 +261,21 @@ func (r *ReleaseReconciler) parseUpgradeConfig(ctx context.Context, manifest *re
 	}
 
 	return upgrade.NewConfig(manifest, types.NamespacedName{Name: release.Name, Namespace: release.Namespace}, opts)
+}
+
+// updateReleaseStatus persists the specified release status using the latest Release resource state.
+// Additionally it retries when hitting a release status update conflict, as the Release resource may have been modified
+// between the reconciler's initial fetch and the status update.
+func (r *ReleaseReconciler) updateReleaseStatus(ctx context.Context, name types.NamespacedName, status lifecyclev1alpha1.ReleaseStatus) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &lifecyclev1alpha1.Release{}
+		if err := r.Get(ctx, name, latest); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+
+		latest.Status = *status.DeepCopy()
+		return r.Status().Update(ctx, latest)
+	})
 }
 
 // SetupWithManager sets up the controller with the Manager.
