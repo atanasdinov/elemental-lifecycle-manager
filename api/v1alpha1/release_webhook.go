@@ -24,26 +24,48 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 func SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &Release{}).
-		WithValidator(&ReleaseValidator{}).
+		WithValidator(&ReleaseValidator{client: mgr.GetClient()}).
 		Complete()
 }
 
-type ReleaseValidator struct{}
+// Do not generate DeepCopy types for the validator as it is not an API data model
+// +kubebuilder:object:generate=false
+type ReleaseValidator struct {
+	client client.Client
+}
 
 var _ admission.Validator[*Release] = &ReleaseValidator{}
 
-func (r *ReleaseValidator) ValidateCreate(_ context.Context, release *Release) (admission.Warnings, error) {
+func (r *ReleaseValidator) ValidateCreate(ctx context.Context, release *Release) (admission.Warnings, error) {
 	if release.Spec.Registry == "" {
 		return nil, fmt.Errorf("release registry is required")
 	}
 
-	_, err := validateReleaseVersion(release.Spec.Version)
-	return nil, err
+	if _, err := validateReleaseVersion(release.Spec.Version); err != nil {
+		return nil, fmt.Errorf("validating release version: %w", err)
+	}
+
+	releaseList := &ReleaseList{}
+	if err := r.client.List(ctx, releaseList); err != nil {
+		return nil, fmt.Errorf("listing existing releases: %w", err)
+	}
+
+	if len(releaseList.Items) > 0 {
+		return nil, fmt.Errorf(
+			"cannot create release %s. The cluster has an already created Release object: %s/%s",
+			release.Name,
+			releaseList.Items[0].Namespace,
+			releaseList.Items[0].Name,
+		)
+	}
+
+	return nil, nil
 }
 
 func (r *ReleaseValidator) ValidateUpdate(_ context.Context, oldRelease, newRelease *Release) (admission.Warnings, error) {

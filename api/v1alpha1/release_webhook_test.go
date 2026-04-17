@@ -19,13 +19,14 @@ package v1alpha1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Release Webhook", func() {
-	Context("When creating Release under Validating Webhook", func() {
+	Context("When creating Release under Validating Webhook", Ordered, func() {
 		It("Should be denied if registry is not specified", func() {
 			release := &Release{
 				ObjectMeta: metav1.ObjectMeta{
@@ -86,22 +87,31 @@ var _ = Describe("Release Webhook", func() {
 
 			Expect(k8sClient.Create(ctx, release)).To(Succeed())
 		})
+
+		It("Should be denied if release already exists", func() {
+			release := &Release{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "release2",
+					Namespace: "default",
+				},
+				Spec: ReleaseSpec{
+					Registry: "registry.example.com",
+					Version:  "0.5.0",
+				},
+			}
+
+			err := k8sClient.Create(ctx, release)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("cannot create release release2. The cluster has an already created Release object: default/release")))
+		})
 	})
 
 	Context("When updating Release under Validating Webhook", Ordered, func() {
-		release := &Release{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "release1",
-				Namespace: "default",
-			},
-			Spec: ReleaseSpec{
-				Registry: "registry.example.com",
-				Version:  "1.0.0",
-			},
-		}
+		var release *Release
 
-		BeforeAll(func() {
-			Expect(k8sClient.Create(ctx, release)).To(Succeed())
+		BeforeEach(func() {
+			release = &Release{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: "release", Namespace: "default"}, release)).To(Succeed())
 		})
 
 		It("Should be denied if release registry is not specified", func() {
@@ -165,7 +175,7 @@ var _ = Describe("Release Webhook", func() {
 
 			err := k8sClient.Update(ctx, release)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(MatchError(ContainSubstring("any edits over 'release1' must come with an increment of the version")))
+			Expect(err).To(MatchError(ContainSubstring("new version must be greater than the currently applied one ('1.0.0')")))
 		})
 
 		It("Should be denied if the new release version is lower than the last applied one", func() {
@@ -184,7 +194,7 @@ var _ = Describe("Release Webhook", func() {
 	Context("When deleting Release under Validating Webhook", Ordered, func() {
 		release := &Release{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "release2",
+				Name:      "release",
 				Namespace: "default",
 			},
 			Spec: ReleaseSpec{
@@ -192,10 +202,6 @@ var _ = Describe("Release Webhook", func() {
 				Version:  "1.0.0",
 			},
 		}
-
-		BeforeAll(func() {
-			Expect(k8sClient.Create(ctx, release)).To(Succeed())
-		})
 
 		It("Should be denied", func() {
 			err := k8sClient.Delete(ctx, release)
