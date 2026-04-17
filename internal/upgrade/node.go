@@ -17,36 +17,12 @@ limitations under the License.
 package upgrade
 
 import (
-	"fmt"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
 )
-
-// filterNodesBySelector returns nodes matching the given label selector.
-func filterNodesBySelector(nodes []corev1.Node, nodeSelector *metav1.LabelSelector) ([]corev1.Node, error) {
-	if nodeSelector == nil {
-		return nodes, nil
-	}
-
-	selector, err := metav1.LabelSelectorAsSelector(nodeSelector)
-	if err != nil {
-		return nil, fmt.Errorf("parsing node selector: %w", err)
-	}
-
-	var matching []corev1.Node
-	for _, node := range nodes {
-		if selector.Matches(labels.Set(node.Labels)) {
-			matching = append(matching, node)
-		}
-	}
-
-	return matching, nil
-}
 
 // isNodeReady returns true if the node has a Ready condition with status True.
 func isNodeReady(node *corev1.Node) bool {
@@ -65,26 +41,6 @@ func isControlPlaneOnlyCluster(nodes []corev1.Node) bool {
 			return false
 		}
 	}
-	return true
-}
-
-// allNodesReady returns true if all the specified nodes are
-// schedulable and in a 'Ready' status.
-func allNodesReady(nodes []corev1.Node) bool {
-	if len(nodes) == 0 {
-		return false
-	}
-
-	for _, node := range nodes {
-		if !isNodeReady(&node) {
-			return false
-		}
-
-		if node.Spec.Unschedulable {
-			return false
-		}
-	}
-
 	return true
 }
 
