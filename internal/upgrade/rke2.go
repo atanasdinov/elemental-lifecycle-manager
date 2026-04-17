@@ -43,51 +43,100 @@ const (
 	chartURLAnnotation = "helm.cattle.io/chart-url"
 )
 
-type RKE2PackagedComponentsSnapshotter struct {
+type chartSnapshotPair struct {
+	Chart    *helmv1.HelmChart
+	Snapshot *PackagedComponentChartSnapshot
+}
+
+type RKE2PackagedComponentsHandler struct {
 	client.Client
 	helmClient     helm.Client
 	findComponents func(ctx context.Context, client client.Client) (map[string]helmv1.HelmChart, error)
 }
 
-func NewRKE2PackagedComponentSnapshotter(
+func NewRKE2PackagedComponentsHandler(
 	c client.Client,
 	helm helm.Client,
 	findComponents func(ctx context.Context, client client.Client) (map[string]helmv1.HelmChart, error),
-) *RKE2PackagedComponentsSnapshotter {
-	snapshotter := &RKE2PackagedComponentsSnapshotter{
+) *RKE2PackagedComponentsHandler {
+	handler := &RKE2PackagedComponentsHandler{
 		Client:         c,
 		helmClient:     helm,
 		findComponents: findComponents,
 	}
 
-	if snapshotter.findComponents == nil {
-		snapshotter.findComponents = findRKE2PackagedComponents
+	if handler.findComponents == nil {
+		handler.findComponents = findRKE2PackagedComponents
 	}
 
-	return snapshotter
+	return handler
 }
 
-func (r *RKE2PackagedComponentsSnapshotter) Create(ctx context.Context, nn types.NamespacedName) error {
-	logger := log.FromContext(ctx)
-	snapshot := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      nn.Name,
-			Namespace: nn.Namespace,
-		},
+func (h *RKE2PackagedComponentsHandler) GenerateSnapshot(ctx context.Context, config *Config) (*PackagedComponentsSnapshot, error) {
+	snapshot := h.blankSnapshot(config)
+	err := h.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: snapshot.Namespace}, snapshot)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("getting RKE2 packaged component snapshot: %w", err)
+		}
+
+		snapshot = h.blankSnapshot(config)
+		if err := h.createSnapshot(ctx, snapshot, config); err != nil {
+			return nil, fmt.Errorf("creating snapshot %s: %w", snapshot.Name, err)
+		}
 	}
 
-	if err := r.populateSnapshot(ctx, snapshot); err != nil {
+	var recreate bool
+	if release, ok := snapshot.Labels[lifecyclev1alpha1.ReleaseNameLabel]; !ok || release != config.ReleaseNamespacedName.Name {
+		recreate = true
+	}
+
+	if version, ok := snapshot.Labels[lifecyclev1alpha1.ReleaseVersionLabel]; !ok || version != lifecyclev1alpha1.SanitizeVersion(config.Version) {
+		recreate = true
+	}
+
+	if recreate {
+		if err := h.deleteSnapshotAndWait(ctx, snapshot, 1*time.Second, 120*time.Second); err != nil {
+			return nil, fmt.Errorf("waiting for snapshot %s deletion: %w", snapshot.Name, err)
+		}
+
+		snapshot = h.blankSnapshot(config)
+		if err := h.createSnapshot(ctx, snapshot, config); err != nil {
+			return nil, fmt.Errorf("creating snapshot %s: %w", snapshot.Name, err)
+		}
+	}
+
+	return h.parseSnapshot(snapshot)
+}
+
+func (h *RKE2PackagedComponentsHandler) blankSnapshot(config *Config) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rke2-packaged-components-snapshot",
+			Namespace: config.ReleaseNamespacedName.Namespace,
+			Labels: map[string]string{
+				lifecyclev1alpha1.ReleaseNameLabel:    config.ReleaseNamespacedName.Name,
+				lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(config.Version),
+			},
+		},
+	}
+}
+
+func (h *RKE2PackagedComponentsHandler) createSnapshot(ctx context.Context, snapshot *corev1.ConfigMap, config *Config) error {
+	if err := h.populateSnapshot(ctx, snapshot); err != nil {
 		return fmt.Errorf("populating RKE2 packaged components snapshot: %w", err)
 	}
 
-	logger.Info("Creating RKE2 packaged components snapshot",
+	log.FromContext(ctx).Info("Generating RKE2 packaged components snapshot",
 		"name", snapshot.Name,
-		"namespace", snapshot.Namespace)
-	return r.Client.Create(ctx, snapshot)
+		"namespace", snapshot.Namespace,
+		"owner", config.ReleaseNamespacedName.Name,
+	)
+	return h.Client.Create(ctx, snapshot)
 }
 
-func (r *RKE2PackagedComponentsSnapshotter) populateSnapshot(ctx context.Context, snapshot *corev1.ConfigMap) error {
-	rke2Charts, err := r.findComponents(ctx, r.Client)
+func (h *RKE2PackagedComponentsHandler) populateSnapshot(ctx context.Context, snapshot *corev1.ConfigMap) error {
+	rke2Charts, err := h.findComponents(ctx, h.Client)
 	if err != nil {
 		return fmt.Errorf("retrieving RKE2 packaged components: %w", err)
 	}
@@ -97,7 +146,7 @@ func (r *RKE2PackagedComponentsSnapshotter) populateSnapshot(ctx context.Context
 	}
 
 	for _, rke2Chart := range rke2Charts {
-		chartSnapshot, err := r.createHelmChartSnapshot(rke2Chart)
+		chartSnapshot, err := h.createHelmChartSnapshot(rke2Chart)
 		if err != nil {
 			return fmt.Errorf("parsing fingerprint from HelmChart '%s': %w", rke2Chart.Name, err)
 		}
@@ -112,7 +161,7 @@ func (r *RKE2PackagedComponentsSnapshotter) populateSnapshot(ctx context.Context
 	return nil
 }
 
-func (r *RKE2PackagedComponentsSnapshotter) createHelmChartSnapshot(chart helmv1.HelmChart) (*PackagedComponentChartSnapshot, error) {
+func (h *RKE2PackagedComponentsHandler) createHelmChartSnapshot(chart helmv1.HelmChart) (*PackagedComponentChartSnapshot, error) {
 	snapshot := &PackagedComponentChartSnapshot{
 		Name:      chart.Name,
 		Namespace: chart.Namespace,
@@ -126,7 +175,7 @@ func (r *RKE2PackagedComponentsSnapshotter) createHelmChartSnapshot(chart helmv1
 		snapshot.ChartContentSHA = hashContent(chart.Spec.ChartContent)
 	}
 
-	info, err := r.helmClient.RetrieveRelease(chart.Name)
+	info, err := h.helmClient.RetrieveRelease(chart.Name)
 	if err != nil {
 		return nil, fmt.Errorf("retrieving Helm release '%s': %w", chart.Name, err)
 	}
@@ -137,17 +186,7 @@ func (r *RKE2PackagedComponentsSnapshotter) createHelmChartSnapshot(chart helmv1
 	return snapshot, nil
 }
 
-func (r *RKE2PackagedComponentsSnapshotter) Load(ctx context.Context, nn types.NamespacedName) (*PackagedComponentsSnapshot, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Loading RKE2 packaged components snapshot",
-		"name", nn.Name,
-		"namespace", nn.Namespace)
-
-	snapshot := &corev1.ConfigMap{}
-	if err := r.Get(ctx, nn, snapshot); err != nil {
-		return nil, fmt.Errorf("getting RKE2 packaged component snapshot: %w", err)
-	}
-
+func (h *RKE2PackagedComponentsHandler) parseSnapshot(snapshot *corev1.ConfigMap) (*PackagedComponentsSnapshot, error) {
 	parsedSnapshot := &PackagedComponentsSnapshot{}
 	for name, data := range snapshot.Data {
 		parsedChartSnapshot := &PackagedComponentChartSnapshot{}
@@ -160,75 +199,36 @@ func (r *RKE2PackagedComponentsSnapshotter) Load(ctx context.Context, nn types.N
 	return parsedSnapshot, nil
 }
 
-func (r *RKE2PackagedComponentsSnapshotter) DeleteAndWait(ctx context.Context, nn types.NamespacedName, interval time.Duration, timeout time.Duration) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Deleting RKE2 packaged components snapshot",
-		"name", nn.Name,
-		"namespace", nn.Namespace)
-
-	snapshot := &corev1.ConfigMap{}
-	if err := r.Get(ctx, nn, snapshot); apierrors.IsNotFound(err) {
-		// Alredy deleted by another operation
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("retrieving RKE2 packaged component snapshot for deletion: %w", err)
+func (h *RKE2PackagedComponentsHandler) deleteSnapshotAndWait(ctx context.Context, snapshot *corev1.ConfigMap, interval time.Duration, timeout time.Duration) error {
+	// Only delete if snapshot is not already being deleted
+	if snapshot.GetDeletionTimestamp().IsZero() {
+		if err := h.Delete(ctx, snapshot); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting RKE2 packaged component snapshot '%s': %w", snapshot.Name, err)
+		}
 	}
 
-	if err := r.Delete(ctx, snapshot); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("deleting RKE2 packaged component snapshot '%s': %w", snapshot.Name, err)
-	}
-
-	return wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (done bool, err error) {
+	return wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		deleted := &corev1.ConfigMap{}
-		getErr := r.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: snapshot.Namespace}, deleted)
-		if apierrors.IsNotFound(getErr) {
+		err := h.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: snapshot.Namespace}, deleted)
+		if apierrors.IsNotFound(err) {
 			return true, nil
 		}
-
-		if getErr != nil {
-			return false, getErr
+		if err != nil {
+			return false, err
 		}
+
 		return false, nil
 	})
 }
 
-type chartSnapshotPair struct {
-	Chart    *helmv1.HelmChart
-	Snapshot *PackagedComponentChartSnapshot
-}
-
-type RKE2PackagedComponentsVerifier struct {
-	client.Client
-	helmClient     helm.Client
-	findComponents func(ctx context.Context, client client.Client) (map[string]helmv1.HelmChart, error)
-}
-
-func NewRKE2PackagedComponentsVerifier(
-	c client.Client,
-	helm helm.Client,
-	findComponents func(ctx context.Context, client client.Client) (map[string]helmv1.HelmChart, error),
-) *RKE2PackagedComponentsVerifier {
-	verifier := &RKE2PackagedComponentsVerifier{
-		Client:         c,
-		helmClient:     helm,
-		findComponents: findComponents,
-	}
-
-	if verifier.findComponents == nil {
-		verifier.findComponents = findRKE2PackagedComponents
-	}
-
-	return verifier
-}
-
-func (r *RKE2PackagedComponentsVerifier) VerifyAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error) {
-	snapshotPairs, err := r.findNewOrChangedRKE2PackagedComponents(ctx, snapshot.Charts)
+func (h *RKE2PackagedComponentsHandler) ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error) {
+	snapshotPairs, err := h.findNewOrChangedRKE2PackagedComponents(ctx, snapshot.Charts)
 	if err != nil {
 		return nil, fmt.Errorf("finding new or changed RKE2 packaged components: %w", err)
 	}
 
 	for _, pair := range snapshotPairs {
-		jobComplete, err := r.isHelmChartJobComplete(ctx, pair)
+		jobComplete, err := h.isHelmChartJobComplete(ctx, pair)
 		if err != nil {
 			return nil, fmt.Errorf("validating job for RKE2 packaged component '%s': %w", pair.Chart.Name, err)
 		}
@@ -247,13 +247,13 @@ func (r *RKE2PackagedComponentsVerifier) VerifyAvailability(ctx context.Context,
 	}, nil
 }
 
-func (r *RKE2PackagedComponentsVerifier) findNewOrChangedRKE2PackagedComponents(ctx context.Context, chartSnapshots []*PackagedComponentChartSnapshot) ([]*chartSnapshotPair, error) {
+func (h *RKE2PackagedComponentsHandler) findNewOrChangedRKE2PackagedComponents(ctx context.Context, chartSnapshots []*PackagedComponentChartSnapshot) ([]*chartSnapshotPair, error) {
 	snapshotMap := make(map[string]*PackagedComponentChartSnapshot, len(chartSnapshots))
 	for _, chart := range chartSnapshots {
 		snapshotMap[chart.Name] = chart
 	}
 
-	latestComponents, err := r.findComponents(ctx, r.Client)
+	latestComponents, err := h.findComponents(ctx, h.Client)
 	if err != nil {
 		return nil, fmt.Errorf("finding RKE2 packaged components: %w", err)
 	}
@@ -267,7 +267,7 @@ func (r *RKE2PackagedComponentsVerifier) findNewOrChangedRKE2PackagedComponents(
 			continue
 		}
 
-		if r.chartStateChanged(&chart, snap) {
+		if h.chartStateChanged(&chart, snap) {
 			changedState = append(changedState, &chartSnapshotPair{
 				Chart:    &chart,
 				Snapshot: snap,
@@ -278,13 +278,13 @@ func (r *RKE2PackagedComponentsVerifier) findNewOrChangedRKE2PackagedComponents(
 	return append(changedState, newComponents...), nil
 }
 
-func (r *RKE2PackagedComponentsVerifier) chartStateChanged(chart *helmv1.HelmChart, chartSnapshot *PackagedComponentChartSnapshot) bool {
+func (h *RKE2PackagedComponentsHandler) chartStateChanged(chart *helmv1.HelmChart, chartSnapshot *PackagedComponentChartSnapshot) bool {
 	activeContent := hashContent(chart.Spec.ChartContent)
 	return activeContent != chartSnapshot.ChartContentSHA ||
 		chart.Annotations[chartURLAnnotation] != chartSnapshot.ChartURL
 }
 
-func (r *RKE2PackagedComponentsVerifier) isHelmChartJobComplete(ctx context.Context, pair *chartSnapshotPair) (bool, error) {
+func (h *RKE2PackagedComponentsHandler) isHelmChartJobComplete(ctx context.Context, pair *chartSnapshotPair) (bool, error) {
 	chart := pair.Chart
 
 	// Check if the upgrade job exists and is complete
@@ -293,13 +293,13 @@ func (r *RKE2PackagedComponentsVerifier) isHelmChartJobComplete(ctx context.Cont
 	}
 
 	job := &batchv1.Job{}
-	if err := r.Get(ctx, types.NamespacedName{
+	if err := h.Get(ctx, types.NamespacedName{
 		Name:      chart.Status.JobName,
 		Namespace: chart.Namespace,
 	}, job); err != nil {
 		// Job might be cleaned up after completion, check actual helm release version
 		if apierrors.IsNotFound(err) {
-			return r.hasHelmReleaseAdvancedPastSnapshot(pair)
+			return h.hasHelmReleaseAdvancedPastSnapshot(pair)
 		}
 		return false, err
 	}
@@ -313,11 +313,11 @@ func (r *RKE2PackagedComponentsVerifier) isHelmChartJobComplete(ctx context.Cont
 		return false, nil
 	}
 
-	return r.hasHelmReleaseAdvancedPastSnapshot(pair)
+	return h.hasHelmReleaseAdvancedPastSnapshot(pair)
 }
 
-func (r *RKE2PackagedComponentsVerifier) hasHelmReleaseAdvancedPastSnapshot(pair *chartSnapshotPair) (bool, error) {
-	release, err := r.helmClient.RetrieveRelease(pair.Chart.Name)
+func (h *RKE2PackagedComponentsHandler) hasHelmReleaseAdvancedPastSnapshot(pair *chartSnapshotPair) (bool, error) {
+	release, err := h.helmClient.RetrieveRelease(pair.Chart.Name)
 	if err != nil {
 		return false, fmt.Errorf("retrieving RKE2 packaged component Helm release %s: %w", pair.Chart.Name, err)
 	}

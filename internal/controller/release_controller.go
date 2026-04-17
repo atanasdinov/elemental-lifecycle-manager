@@ -54,7 +54,7 @@ type ReleaseReconciler struct {
 // +kubebuilder:rbac:groups=lifecycle.suse.com,resources=releases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=lifecycle.suse.com,resources=releases/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=watch;list
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=upgrade.cattle.io,resources=plans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=helm.cattle.io,resources=helmcharts,verbs=get;list;watch;create;update;patch

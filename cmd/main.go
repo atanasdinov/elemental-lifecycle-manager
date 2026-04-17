@@ -153,12 +153,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	var packagedComponentsSnapshotter upgrade.PackagedComponentsSnapshotter
-	var packagedComponentsVerifier upgrade.PackagedComponentsVerifier
+	var packagedComponendsHandler upgrade.KubernetesPackagedComponentsHandler
 	switch {
 	case strings.Contains(serverVersion.GitVersion, "rke2"):
-		packagedComponentsSnapshotter = upgrade.NewRKE2PackagedComponentSnapshotter(k8sClient, helmClient, nil)
-		packagedComponentsVerifier = upgrade.NewRKE2PackagedComponentsVerifier(k8sClient, helmClient, nil)
+		packagedComponendsHandler = upgrade.NewRKE2PackagedComponentsHandler(k8sClient, helmClient, nil)
 	}
 
 	sucPlanReconciler := upgrade.NewSUCPlanReconciler(k8sClient)
@@ -171,8 +169,7 @@ func main() {
 			upgrade.NewKubernetesReconciler(
 				k8sClient,
 				sucPlanReconciler,
-				packagedComponentsSnapshotter,
-				packagedComponentsVerifier,
+				packagedComponendsHandler,
 			),
 			upgrade.NewHelmReconciler(k8sClient, helmClient),
 		),

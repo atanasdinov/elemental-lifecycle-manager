@@ -19,14 +19,11 @@ package upgrade
 import (
 	"context"
 	"fmt"
-	"time"
 
 	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -44,40 +41,31 @@ type PackagedComponentsSnapshot struct {
 	Charts []*PackagedComponentChartSnapshot
 }
 
-type PackagedComponentsSnapshotter interface {
-	// Create creates a new packaged components snapshot and populates it with the found packaged components, returns
-	// error otherwise.
-	Create(ctx context.Context, nn types.NamespacedName) error
-	// Load loads an existing packaged components snapshot into a 'PackagedComponentsSnapshot', returns error otherwise.
-	Load(ctx context.Context, nn types.NamespacedName) (*PackagedComponentsSnapshot, error)
-	// DeleteAndWait schedules a delete for the snapshot and NamespacedName and waits for it to be deleted.
-	DeleteAndWait(ctx context.Context, nn types.NamespacedName, interval time.Duration, timeout time.Duration) error
-}
-
-type PackagedComponentsVerifier interface {
-	// VerifyAvailability retrieves the packaged components from the provided snapshot, compares them with the
-	// currently running packaged components and waits for any changed components to become available.
-	VerifyAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error)
+type KubernetesPackagedComponentsHandler interface {
+	// Snapshot creates a snapshot of the packaged components for a specific Kubernetes distribution.
+	// Returns the packaged components snapshot, or an error otherwise.
+	GenerateSnapshot(ctx context.Context, config *Config) (*PackagedComponentsSnapshot, error)
+	// ReconcileAvailability retrieves the packaged components from the provided snapshot, compares them with the
+	// currently running packaged components and waits for any new or changed components to become available.
+	ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error)
 }
 
 // KubernetesReconciler reconciles Kubernetes upgrades via SUC Plans and verifies node state.
 type KubernetesReconciler struct {
 	client.Client
-	sucReconciler        PlanReconciler
-	componentSnapshotter PackagedComponentsSnapshotter
-	componentVerifier    PackagedComponentsVerifier
+	sucReconciler             PlanReconciler
+	packagedComponentsHandler KubernetesPackagedComponentsHandler
 }
 
 func NewKubernetesReconciler(
 	c client.Client,
 	sucReconciler PlanReconciler,
-	componentSnapshotter PackagedComponentsSnapshotter,
-	componentVerifier PackagedComponentsVerifier) *KubernetesReconciler {
+	packagedComponentsHandler KubernetesPackagedComponentsHandler,
+) *KubernetesReconciler {
 	return &KubernetesReconciler{
-		Client:               c,
-		sucReconciler:        sucReconciler,
-		componentSnapshotter: componentSnapshotter,
-		componentVerifier:    componentVerifier,
+		Client:                    c,
+		sucReconciler:             sucReconciler,
+		packagedComponentsHandler: packagedComponentsHandler,
 	}
 }
 
@@ -90,22 +78,23 @@ func (r *KubernetesReconciler) ShouldReconcile(config *Config) bool {
 }
 
 func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
+	if config == nil || config.Kubernetes == nil {
+		return &PhaseStatus{
+			State:   lifecyclev1alpha1.UpgradeSkipped,
+			Message: fmt.Sprintf("Upgrade for phase %s is skipped", r.Phase()),
+		}, nil
+	}
+
 	logger := log.FromContext(ctx)
 	k8sConfig := config.Kubernetes
-
 	logger.Info("Reconciling Kubernetes upgrade",
 		"image", k8sConfig.Image,
 		"version", k8sConfig.Version,
 		"release", config.ReleaseNamespacedName.Name)
 
-	snapshotNN := types.NamespacedName{
-		Name:      fmt.Sprintf("lcm-k8s-packaged-components-snapshot-pre-%s", lifecyclev1alpha1.SanitizeVersion(config.Version)),
-		Namespace: config.ReleaseNamespacedName.Namespace,
-	}
-
-	// Snapshots are created one per version, so ignore "AlreadyExists" errors if the snapshot is already created
-	if err := r.componentSnapshotter.Create(ctx, snapshotNN); err != nil && !apierrors.IsAlreadyExists(err) {
-		return nil, fmt.Errorf("creating Kubernetes packaged components snapshot: %w", err)
+	snapshot, err := r.packagedComponentsHandler.GenerateSnapshot(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("generating Kubernetes pacakged components snapshot: %w", err)
 	}
 
 	plans, err := r.preparePlans(ctx, config)
@@ -131,21 +120,10 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 		}
 	}
 
-	loadedSnapshot, err := r.componentSnapshotter.Load(ctx, snapshotNN)
-	if err != nil {
-		return nil, fmt.Errorf("loading Kubernetes packaged components snapshot: %w", err)
-	}
-
-	if status, err := r.componentVerifier.VerifyAvailability(ctx, loadedSnapshot); err != nil {
+	if status, err := r.packagedComponentsHandler.ReconcileAvailability(ctx, snapshot); err != nil {
 		return nil, fmt.Errorf("ensuring Kubernetes packaged components availability: %w", err)
 	} else if status.State != lifecyclev1alpha1.K8sPackagedComponentsAvailable {
 		return status, nil
-	}
-
-	if err := r.componentSnapshotter.DeleteAndWait(ctx, snapshotNN, 1*time.Second, 120*time.Second); err != nil {
-		logger.Error(err, "cleaning up Kubernetes packaged components snapshot",
-			"name", snapshotNN.Name,
-			"namespace", snapshotNN.Namespace)
 	}
 
 	return &PhaseStatus{
