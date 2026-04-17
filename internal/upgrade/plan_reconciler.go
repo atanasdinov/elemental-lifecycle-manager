@@ -31,7 +31,6 @@ import (
 )
 
 type PlanResult struct {
-	Plan   *upgradecattlev1.Plan
 	Status *PhaseStatus
 	Nodes  []corev1.Node
 }
@@ -54,11 +53,7 @@ func (p *SUCPlanReconciler) Reconcile(ctx context.Context, desired *upgradecattl
 		return nil, fmt.Errorf("parsing plan: %w", err)
 	}
 
-	result := &PlanResult{
-		Plan:   plan,
-		Status: parsePhaseStatusFromPlan(plan),
-	}
-
+	result := &PlanResult{Status: parsePhaseStatusFromPlan(plan)}
 	if result.Status.State == lifecyclev1alpha1.PlanComplete {
 		nodes, err := p.listNodesForPlan(ctx, plan)
 		if err != nil {
