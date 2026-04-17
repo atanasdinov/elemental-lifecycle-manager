@@ -30,6 +30,7 @@ var _ = Describe("OS plan tests", func() {
 	const (
 		releaseName           = "test-release"
 		osImage               = "registry.example.com/elemental-os:1.2.3"
+		osVersion             = "1.2.3"
 		version               = "0.6.0"
 		drain                 = true
 		expectedUpgradeScript = `HOST="${HOST:-/host}"
@@ -89,7 +90,7 @@ chroot "$HOST" /bin/sh -c "
 
 		BeforeAll(func() {
 			var err error
-			plan, err = OSControlPlane(releaseName, osImage, version, drain)
+			plan, err = OSControlPlane(releaseName, osImage, osVersion, version, drain)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -107,7 +108,7 @@ chroot "$HOST" /bin/sh -c "
 		})
 
 		It("sets correct spec version", func() {
-			Expect(plan.Spec.Version).To(Equal(version))
+			Expect(plan.Spec.Version).To(Equal(osVersion))
 		})
 
 		It("sets concurrency to 1", func() {
@@ -144,7 +145,7 @@ chroot "$HOST" /bin/sh -c "
 
 		BeforeAll(func() {
 			var err error
-			plan, err = OSWorker(releaseName, osImage, version, drain)
+			plan, err = OSWorker(releaseName, osImage, osVersion, version, drain)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -162,7 +163,7 @@ chroot "$HOST" /bin/sh -c "
 		})
 
 		It("sets correct spec version", func() {
-			Expect(plan.Spec.Version).To(Equal(version))
+			Expect(plan.Spec.Version).To(Equal(osVersion))
 		})
 
 		It("sets concurrency to 1", func() {

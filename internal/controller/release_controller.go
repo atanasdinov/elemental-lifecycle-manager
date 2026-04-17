@@ -267,7 +267,7 @@ func (r *ReleaseReconciler) parseUpgradeConfig(ctx context.Context, manifest *re
 		return nil, fmt.Errorf("parsing drain options: %w", err)
 	}
 
-	return upgrade.NewConfig(manifest, types.NamespacedName{Name: release.Name, Namespace: release.Namespace}, opts)
+	return upgrade.NewConfig(manifest, release.Spec.Version, types.NamespacedName{Name: release.Name, Namespace: release.Namespace}, opts)
 }
 
 // updateReleaseStatus persists the specified release status using the latest Release resource state.

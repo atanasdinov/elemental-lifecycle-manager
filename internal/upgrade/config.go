@@ -18,6 +18,7 @@ package upgrade
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/suse/elemental/v3/pkg/manifest/api"
 	"github.com/suse/elemental/v3/pkg/manifest/resolver"
@@ -77,7 +78,7 @@ type HelmChartConfig struct {
 // NewConfig creates a release upgrade specification from the resolved manifest.
 // The upgrade is built by extracting configuration from the core platform
 // and optionally merging with product extension components.
-func NewConfig(manifest *resolver.ResolvedManifest, releaseNamespacedName types.NamespacedName, drainOpts *DrainOpts) (*Config, error) {
+func NewConfig(manifest *resolver.ResolvedManifest, releaseVersion string, releaseNamespacedName types.NamespacedName, drainOpts *DrainOpts) (*Config, error) {
 	if manifest == nil {
 		return nil, fmt.Errorf("manifest is nil")
 	}
@@ -89,10 +90,10 @@ func NewConfig(manifest *resolver.ResolvedManifest, releaseNamespacedName types.
 	core := manifest.CorePlatform
 	config := &Config{
 		ReleaseNamespacedName: releaseNamespacedName,
-		Version:               core.Metadata.Version,
+		Version:               releaseVersion,
 		OS: &OSConfig{
 			Image:     core.Components.OperatingSystem.Image.Base,
-			Version:   core.Metadata.Version,
+			Version:   parseImageTag(core.Components.OperatingSystem.Image.Base),
 			DrainOpts: drainOpts,
 		},
 	}
@@ -137,4 +138,18 @@ func helmChartConfig(core, product *api.Helm) *HelmChartConfig {
 	}
 
 	return config
+}
+
+func parseImageTag(image string) string {
+	i := strings.LastIndex(image, ":")
+
+	// Find the last slash to ensure the colon we found
+	// isn't just a port number in the registry URL
+	lastSlash := strings.LastIndex(image, "/")
+
+	if i == -1 || i < lastSlash {
+		return "latest"
+	}
+
+	return image[i+1:]
 }

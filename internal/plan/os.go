@@ -47,7 +47,7 @@ func osWorkerName(version string) string {
 
 // OSControlPlane builds a SUC Plan for OS upgrades on control plane nodes.
 // Control plane nodes are upgraded first, without waiting for workers.
-func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
+func OSControlPlane(releaseName, osImage, osVersion, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
 	repo, version := parseImage(osImage)
 	script, err := parseUpgradeScript(repo, version)
 	if err != nil {
@@ -59,7 +59,7 @@ func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) (*u
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
 	}
-	p.Spec.Version = releaseVersion
+	p.Spec.Version = osVersion
 	p.Spec.Concurrency = 1
 	p.Spec.NodeSelector = &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -79,7 +79,7 @@ func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) (*u
 
 // OSWorker builds a SUC Plan for OS upgrades on worker nodes.
 // Worker nodes wait for control plane upgrades to complete before starting.
-func OSWorker(releaseName, osImage, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
+func OSWorker(releaseName, osImage, osVersion, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
 	repo, version := parseImage(osImage)
 	script, err := parseUpgradeScript(repo, version)
 	if err != nil {
@@ -91,7 +91,7 @@ func OSWorker(releaseName, osImage, releaseVersion string, drain bool) (*upgrade
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
 	}
-	p.Spec.Version = releaseVersion
+	p.Spec.Version = osVersion
 	p.Spec.Concurrency = 1
 	p.Spec.NodeSelector = &metav1.LabelSelector{
 		MatchExpressions: []metav1.LabelSelectorRequirement{
