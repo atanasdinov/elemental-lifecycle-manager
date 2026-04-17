@@ -38,6 +38,13 @@ func (p Phase) ConditionType() string {
 	return string(p) + "Upgraded"
 }
 
+func (p Phase) SkippedStatus() *PhaseStatus {
+	return &PhaseStatus{
+		State:   lifecyclev1alpha1.UpgradeSkipped,
+		Message: fmt.Sprintf("Upgrade for phase '%s' skipped", p),
+	}
+}
+
 // PhaseStatus contains the status and details for an upgrade phase.
 type PhaseStatus struct {
 	State   string
@@ -61,7 +68,7 @@ type Result struct {
 	PhaseStates map[Phase]*PhaseStatus
 }
 
-// AllComplete returns true if all phases have succeeded.
+// AllComplete returns true if all phases have either succeeded or been skipped.
 func (r *Result) AllComplete() bool {
 	for _, state := range r.PhaseStates {
 		if state.State != lifecyclev1alpha1.UpgradeSucceeded && state.State != lifecyclev1alpha1.UpgradeSkipped {

@@ -73,16 +73,9 @@ func (r *KubernetesReconciler) Phase() Phase {
 	return PhaseKubernetes
 }
 
-func (r *KubernetesReconciler) ShouldReconcile(config *Config) bool {
-	return config.Kubernetes != nil
-}
-
 func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
 	if config == nil || config.Kubernetes == nil {
-		return &PhaseStatus{
-			State:   lifecyclev1alpha1.UpgradeSkipped,
-			Message: fmt.Sprintf("Upgrade for phase %s is skipped", r.Phase()),
-		}, nil
+		return r.Phase().SkippedStatus(), nil
 	}
 
 	logger := log.FromContext(ctx)

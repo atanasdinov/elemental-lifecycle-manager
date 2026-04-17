@@ -74,11 +74,11 @@ func (r *HelmReconciler) Phase() Phase {
 	return PhaseHelmCharts
 }
 
-func (r *HelmReconciler) ShouldReconcile(config *Config) bool {
-	return config.HelmCharts != nil && len(config.HelmCharts.Charts) != 0
-}
-
 func (r *HelmReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
+	if config == nil || config.HelmCharts == nil || len(config.HelmCharts.Charts) == 0 {
+		return r.Phase().SkippedStatus(), nil
+	}
+
 	return r.reconcileHelmCharts(ctx, config.ReleaseNamespacedName.Name, config.Version, config.HelmCharts)
 }
 

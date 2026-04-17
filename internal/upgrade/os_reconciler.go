@@ -43,11 +43,11 @@ func (r *OSReconciler) Phase() Phase {
 	return PhaseOS
 }
 
-func (r *OSReconciler) ShouldReconcile(config *Config) bool {
-	return config.OS != nil
-}
-
 func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
+	if config == nil || config.OS == nil {
+		return r.Phase().SkippedStatus(), nil
+	}
+
 	logger := log.FromContext(ctx)
 	osConfig := config.OS
 	logger.Info("Reconciling OS upgrade",
@@ -110,7 +110,7 @@ func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans 
 
 	if !isControlPlaneOnlyCluster(allNodes.Items) {
 		wkPlan, err := plan.OSWorker(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, osConfig.DrainOpts.Worker)
-		if err != nil{
+		if err != nil {
 			return nil, fmt.Errorf("generating OS worker plan: %w", err)
 		}
 		planList = append(planList, wkPlan)

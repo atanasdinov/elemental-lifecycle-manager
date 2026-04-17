@@ -27,9 +27,6 @@ import (
 type PhaseHandler interface {
 	// Phase returns the phase this handler is responsible for.
 	Phase() Phase
-	// ShouldReconcile returns true if this phase should be reconciled given the config.
-	// Use this to skip phases that are not applicable (e.g., no Helm charts configured).
-	ShouldReconcile(config *Config) bool
 	// Reconcile performs the reconciliation for this phase and returns the status.
 	Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error)
 }
@@ -53,7 +50,8 @@ func NewPipeline(handlers ...PhaseHandler) *Pipeline {
 // It stops and returns when:
 // - A phase returns an error (wrapped in PhaseError)
 // - A phase has not yet succeeded (allowing retry on next reconcile)
-// - All phases complete successfully
+// - All phases complete successfully - a completed phase is a phase with a
+// status marked as either 'Succeeded' or 'Skipped'
 func (p *Pipeline) Reconcile(ctx context.Context, config *Config) (*Result, error) {
 	result := &Result{
 		PhaseStates: make(map[Phase]*PhaseStatus),
@@ -64,23 +62,14 @@ func (p *Pipeline) Reconcile(ctx context.Context, config *Config) (*Result, erro
 	}
 
 	for _, handler := range p.handlers {
-		// If a reconciler shouldn't reconcile, mark it as skipped.
-		if !handler.ShouldReconcile(config) {
-			result.PhaseStates[handler.Phase()] = &PhaseStatus{
-				State:   lifecyclev1alpha1.UpgradeSkipped,
-				Message: fmt.Sprintf("Upgrade for phase '%s' skipped", handler.Phase()),
-			}
-			continue
-		}
-
 		status, err := handler.Reconcile(ctx, config)
 		if err != nil {
 			return result, &PhaseError{Phase: handler.Phase(), Err: err}
 		}
 		result.PhaseStates[handler.Phase()] = status
 
-		// Stop if phase not complete - will resume on next reconcile
-		if status.State != lifecyclev1alpha1.UpgradeSucceeded {
+		// Stop if phase state is other than succeeded or skipped
+		if status.State != lifecyclev1alpha1.UpgradeSucceeded && status.State != lifecyclev1alpha1.UpgradeSkipped {
 			return result, nil
 		}
 	}
