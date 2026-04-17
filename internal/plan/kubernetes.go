@@ -53,8 +53,7 @@ func KubernetesControlPlane(releaseName, releaseVersion, k8sVersion string, drai
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
 				Key:      ControlPlaneLabel,
-				Operator: "In",
-				Values:   []string{"true"},
+				Operator: metav1.LabelSelectorOpExists,
 			},
 		},
 	}
@@ -80,8 +79,7 @@ func KubernetesWorker(releaseName, releaseVersion, k8sVersion string, drain bool
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
 				Key:      ControlPlaneLabel,
-				Operator: "NotIn",
-				Values:   []string{"true"},
+				Operator: metav1.LabelSelectorOpDoesNotExist,
 			},
 		},
 	}

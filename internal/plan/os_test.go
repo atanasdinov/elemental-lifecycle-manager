@@ -120,8 +120,7 @@ chroot "$HOST" /bin/sh -c "
 
 			expr := plan.Spec.NodeSelector.MatchExpressions[0]
 			Expect(expr.Key).To(Equal("node-role.kubernetes.io/control-plane"))
-			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOperator("In")))
-			Expect(expr.Values).To(ConsistOf("true"))
+			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOpExists))
 		})
 
 		It("configures upgrade container", func() {
@@ -176,8 +175,7 @@ chroot "$HOST" /bin/sh -c "
 
 			expr := plan.Spec.NodeSelector.MatchExpressions[0]
 			Expect(expr.Key).To(Equal("node-role.kubernetes.io/control-plane"))
-			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOperator("NotIn")))
-			Expect(expr.Values).To(ConsistOf("true"))
+			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOpDoesNotExist))
 		})
 
 		It("configures upgrade container", func() {

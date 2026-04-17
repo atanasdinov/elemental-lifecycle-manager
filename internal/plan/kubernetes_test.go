@@ -92,8 +92,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 
 			expr := plan.Spec.NodeSelector.MatchExpressions[0]
 			Expect(expr.Key).To(Equal("node-role.kubernetes.io/control-plane"))
-			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOperator("In")))
-			Expect(expr.Values).To(ConsistOf("true"))
+			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOpExists))
 		})
 
 		It("configures upgrade container with base image", func() {
@@ -144,8 +143,7 @@ var _ = Describe("Kubernetes plan tests", func() {
 
 			expr := plan.Spec.NodeSelector.MatchExpressions[0]
 			Expect(expr.Key).To(Equal("node-role.kubernetes.io/control-plane"))
-			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOperator("NotIn")))
-			Expect(expr.Values).To(ConsistOf("true"))
+			Expect(expr.Operator).To(Equal(metav1.LabelSelectorOpDoesNotExist))
 		})
 
 		It("enables drain with correct settings", func() {

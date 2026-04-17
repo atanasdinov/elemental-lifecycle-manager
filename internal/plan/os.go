@@ -65,10 +65,7 @@ func OSControlPlane(releaseName, osImage, releaseVersion string, drain bool) (*u
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
 				Key:      ControlPlaneLabel,
-				Operator: "In",
-				Values: []string{
-					"true",
-				},
+				Operator: metav1.LabelSelectorOpExists,
 			},
 		},
 	}
@@ -100,10 +97,7 @@ func OSWorker(releaseName, osImage, releaseVersion string, drain bool) (*upgrade
 		MatchExpressions: []metav1.LabelSelectorRequirement{
 			{
 				Key:      ControlPlaneLabel,
-				Operator: "NotIn",
-				Values: []string{
-					"true",
-				},
+				Operator: metav1.LabelSelectorOpDoesNotExist,
 			},
 		},
 	}
