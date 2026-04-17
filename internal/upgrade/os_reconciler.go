@@ -74,13 +74,6 @@ func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseSta
 			return result.Status, nil
 		}
 
-		if !allNodesReady(result.Nodes) {
-			return &PhaseStatus{
-				State:   lifecyclev1alpha1.UpgradeInProgress,
-				Message: fmt.Sprintf("Plan %s completed, waiting for node upgrade verification", p.Name),
-			}, nil
-		}
-
 		logger.Info("OS upgrade plan completed",
 			"plan", p.Name,
 			"namespace", p.Namespace,
