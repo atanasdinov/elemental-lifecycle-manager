@@ -107,7 +107,7 @@ func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
 	if len(p.Status.Applying) > 0 {
 		return &PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeInProgress,
-			Message: fmt.Sprintf("Plan %s is cuurently applying on: %s", p.Name, p.Status.Applying),
+			Message: fmt.Sprintf("Plan %s is curently applying on: %s", p.Name, p.Status.Applying),
 		}
 	}
 
