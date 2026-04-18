@@ -401,7 +401,7 @@ func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCha
 		}
 	}
 
-	var failed, inProgress, succeeded, skipped int
+	var failed, inProgress, succeeded, alreadyAtVersion, skipped int
 	var failedChart string
 
 	for _, result := range results {
@@ -413,8 +413,10 @@ func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCha
 			}
 		case helm.ChartStateInProgress:
 			inProgress++
-		case helm.ChartStateSucceeded, helm.ChartStateVersionAlreadyInstalled:
+		case helm.ChartStateSucceeded:
 			succeeded++
+		case helm.ChartStateVersionAlreadyInstalled:
+			alreadyAtVersion++
 		case helm.ChartStateNotInstalled:
 			skipped++
 		}
@@ -429,8 +431,14 @@ func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCha
 
 	if inProgress > 0 {
 		return &PhaseStatus{
-			State:   lifecyclev1alpha1.UpgradeInProgress,
-			Message: fmt.Sprintf("Helm charts in progress (%d/%d completed, %d skipped)", succeeded, totalCharts-skipped, skipped),
+			State: lifecyclev1alpha1.UpgradeInProgress,
+			Message: fmt.Sprintf(
+				"Upgrade in progress: %d/%d upgrades completed, %d already at target version, %d skipped",
+				succeeded,
+				totalCharts-(alreadyAtVersion+skipped),
+				alreadyAtVersion,
+				skipped,
+			),
 		}
 	}
 
@@ -441,9 +449,21 @@ func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCha
 		}
 	}
 
+	if succeeded == 0 && alreadyAtVersion == totalCharts {
+		return &PhaseStatus{
+			State:   lifecyclev1alpha1.UpgradeSucceeded,
+			Message: "All Helm charts are already at target version",
+		}
+	}
+
 	return &PhaseStatus{
-		State:   lifecyclev1alpha1.UpgradeSucceeded,
-		Message: fmt.Sprintf("All %d Helm charts upgraded successfully (%d skipped)", succeeded, skipped),
+		State: lifecyclev1alpha1.UpgradeSucceeded,
+		Message: fmt.Sprintf(
+			"Upgraded %d charts, %d charts already at target version, skipped %d charts",
+			succeeded,
+			alreadyAtVersion,
+			skipped,
+		),
 	}
 }
 
