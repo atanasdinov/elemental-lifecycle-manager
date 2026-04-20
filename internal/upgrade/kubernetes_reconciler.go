@@ -46,7 +46,7 @@ type KubernetesPackagedComponentsHandler interface {
 	// Returns the packaged components snapshot, or an error otherwise.
 	GenerateSnapshot(ctx context.Context, config *Config) (*PackagedComponentsSnapshot, error)
 	// ReconcileAvailability retrieves the packaged components from the provided snapshot, compares them with the
-	// currently running packaged components and waits for any new or changed components to become available.
+	// curently running packaged components and waits for any new or changed components to become available.
 	ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error)
 }
 

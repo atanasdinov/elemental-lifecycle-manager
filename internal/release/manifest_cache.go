@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package release
 
 import (
 	"context"
@@ -26,9 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental/v3/pkg/manifest/resolver"
 )
 
@@ -104,30 +102,4 @@ func (c *ManifestCache) Set(ctx context.Context, namespace, version string, mani
 	configMap.Data[version] = string(data)
 
 	return c.Update(ctx, configMap)
-}
-
-// getOrRetrieveManifest returns a cached manifest or fetches it from the registry.
-func (r *ReleaseReconciler) getOrRetrieveManifest(ctx context.Context, release *lifecyclev1alpha1.Release) (*resolver.ResolvedManifest, error) {
-	logger := log.FromContext(ctx)
-	cache := &ManifestCache{Client: r.Client}
-
-	manifest, err := cache.Get(ctx, release.Namespace, release.Spec.Version)
-	if err != nil {
-		logger.Error(err, "Failed to get cached manifest, will fetch from registry")
-	}
-	if manifest != nil {
-		logger.Info("Using cached release manifest", "version", release.Spec.Version)
-		return manifest, nil
-	}
-
-	manifest, err = r.RetrieveManifest(ctx, release.Spec.Registry, release.Spec.Version)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := cache.Set(ctx, release.Namespace, release.Spec.Version, manifest); err != nil {
-		logger.Error(err, "Failed to cache manifest, continuing without caching")
-	}
-
-	return manifest, nil
 }

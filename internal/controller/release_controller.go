@@ -36,6 +36,7 @@ import (
 	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
+	releaseManifest "github.com/suse/elemental-lifecycle-manager/internal/release"
 	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
 	"github.com/suse/elemental/v3/pkg/manifest/resolver"
 	corev1 "k8s.io/api/core/v1"
@@ -177,59 +178,6 @@ func (r *ReleaseReconciler) cleanupOldVersionPlans(ctx context.Context, releaseN
 	return nil
 }
 
-// mapPlanToRelease maps SUC Plan events to Release reconcile requests.
-// Uses the release name label on the Plan to find the corresponding Release.
-func (r *ReleaseReconciler) mapPlanToRelease(ctx context.Context, obj client.Object) []ctrl.Request {
-	releaseName := obj.GetLabels()[lifecyclev1alpha1.ReleaseNameLabel]
-	if releaseName == "" {
-		return nil
-	}
-
-	releaseList := &lifecyclev1alpha1.ReleaseList{}
-	if err := r.List(ctx, releaseList); err != nil {
-		return nil
-	}
-
-	for _, rel := range releaseList.Items {
-		if rel.Name == releaseName {
-			return []ctrl.Request{{
-				NamespacedName: client.ObjectKeyFromObject(&rel),
-			}}
-		}
-	}
-
-	return nil
-}
-
-// mapHelmChartToRelease maps HelmChart events to Release reconcile requests.
-// Uses the release name label on the HelmChart to find the corresponding Release.
-func (r *ReleaseReconciler) mapHelmChartToRelease(ctx context.Context, obj client.Object) []ctrl.Request {
-	// Only watch HelmCharts in the namespace where we create them
-	if obj.GetNamespace() != upgrade.HelmChartNamespace {
-		return nil
-	}
-
-	releaseName := obj.GetLabels()[lifecyclev1alpha1.ReleaseNameLabel]
-	if releaseName == "" {
-		return nil
-	}
-
-	releaseList := &lifecyclev1alpha1.ReleaseList{}
-	if err := r.List(ctx, releaseList); err != nil {
-		return nil
-	}
-
-	for _, rel := range releaseList.Items {
-		if rel.Name == releaseName {
-			return []ctrl.Request{{
-				NamespacedName: client.ObjectKeyFromObject(&rel),
-			}}
-		}
-	}
-
-	return nil
-}
-
 func (r *ReleaseReconciler) parseDrainOpts(ctx context.Context, release *lifecyclev1alpha1.Release) (*upgrade.DrainOpts, error) {
 	if release.Spec.DisableDrain {
 		return &upgrade.DrainOpts{ControlPlane: false, Worker: false}, nil
@@ -283,6 +231,85 @@ func (r *ReleaseReconciler) updateReleaseStatus(ctx context.Context, name types.
 		latest.Status = *status.DeepCopy()
 		return r.Status().Update(ctx, latest)
 	})
+}
+
+// getOrRetrieveManifest returns a cached manifest or fetches it from the registry.
+func (r *ReleaseReconciler) getOrRetrieveManifest(ctx context.Context, release *lifecyclev1alpha1.Release) (*resolver.ResolvedManifest, error) {
+	logger := log.FromContext(ctx)
+	cache := &releaseManifest.ManifestCache{Client: r.Client}
+
+	manifest, err := cache.Get(ctx, release.Namespace, release.Spec.Version)
+	if err != nil {
+		logger.Error(err, "Failed to get cached manifest, will fetch from registry")
+	}
+	if manifest != nil {
+		logger.Info("Using cached release manifest", "version", release.Spec.Version)
+		return manifest, nil
+	}
+
+	manifest, err = r.RetrieveManifest(ctx, release.Spec.Registry, release.Spec.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cache.Set(ctx, release.Namespace, release.Spec.Version, manifest); err != nil {
+		logger.Error(err, "Failed to cache manifest, continuing without caching")
+	}
+
+	return manifest, nil
+}
+
+// mapPlanToRelease maps SUC Plan events to Release reconcile requests.
+// Uses the release name label on the Plan to find the corresponding Release.
+func (r *ReleaseReconciler) mapPlanToRelease(ctx context.Context, obj client.Object) []ctrl.Request {
+	releaseName := obj.GetLabels()[lifecyclev1alpha1.ReleaseNameLabel]
+	if releaseName == "" {
+		return nil
+	}
+
+	releaseList := &lifecyclev1alpha1.ReleaseList{}
+	if err := r.List(ctx, releaseList); err != nil {
+		return nil
+	}
+
+	for _, rel := range releaseList.Items {
+		if rel.Name == releaseName {
+			return []ctrl.Request{{
+				NamespacedName: client.ObjectKeyFromObject(&rel),
+			}}
+		}
+	}
+
+	return nil
+}
+
+// mapHelmChartToRelease maps HelmChart events to Release reconcile requests.
+// Uses the release name label on the HelmChart to find the corresponding Release.
+func (r *ReleaseReconciler) mapHelmChartToRelease(ctx context.Context, obj client.Object) []ctrl.Request {
+	// Only watch HelmCharts in the namespace where we create them
+	if obj.GetNamespace() != upgrade.HelmChartNamespace {
+		return nil
+	}
+
+	releaseName := obj.GetLabels()[lifecyclev1alpha1.ReleaseNameLabel]
+	if releaseName == "" {
+		return nil
+	}
+
+	releaseList := &lifecyclev1alpha1.ReleaseList{}
+	if err := r.List(ctx, releaseList); err != nil {
+		return nil
+	}
+
+	for _, rel := range releaseList.Items {
+		if rel.Name == releaseName {
+			return []ctrl.Request{{
+				NamespacedName: client.ObjectKeyFromObject(&rel),
+			}}
+		}
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
