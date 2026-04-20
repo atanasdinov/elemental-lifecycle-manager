@@ -237,7 +237,7 @@ func (h *RKE2PackagedComponentsHandler) ReconcileAvailability(ctx context.Contex
 		if !jobComplete {
 			return &upgrade.PhaseStatus{
 				State:   lifecyclev1alpha1.UpgradeInProgress,
-				Message: fmt.Sprintf("%s RKE2 HelmChart Job execution is still in progress", pair.Chart.Name),
+				Message: fmt.Sprintf("RKE2 packaged component %s execution is still in progress", pair.Chart.Name),
 			}, nil
 		}
 	}
