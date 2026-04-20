@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upgrade
+package reconcilers
 
 import (
 	"context"
@@ -27,6 +27,7 @@ import (
 	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
 )
 
 // OSReconciler reconciles OS upgrades via SUC Plans and verifies node state.
@@ -39,11 +40,11 @@ func NewOSReconciler(c client.Client, sucReconciler PlanReconciler) *OSReconcile
 	return &OSReconciler{Client: c, sucReconciler: sucReconciler}
 }
 
-func (r *OSReconciler) Phase() Phase {
-	return PhaseOS
+func (r *OSReconciler) Phase() upgrade.Phase {
+	return upgrade.PhaseOS
 }
 
-func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
+func (r *OSReconciler) Reconcile(ctx context.Context, config *upgrade.Config) (*upgrade.PhaseStatus, error) {
 	if config == nil || config.OS == nil {
 		return r.Phase().SkippedStatus(), nil
 	}
@@ -81,13 +82,13 @@ func (r *OSReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseSta
 		)
 	}
 
-	return &PhaseStatus{
+	return &upgrade.PhaseStatus{
 		State:   lifecyclev1alpha1.UpgradeSucceeded,
 		Message: "All nodes upgraded successfully",
 	}, nil
 }
 
-func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans []*upgradecattlev1.Plan, err error) {
+func (r *OSReconciler) preparePlans(ctx context.Context, config *upgrade.Config) (plans []*upgradecattlev1.Plan, err error) {
 	osConfig := config.OS
 	cpPlan, err := plan.OSControlPlane(config.ReleaseNamespacedName.Name, osConfig.Image, osConfig.Version, config.Version, osConfig.DrainOpts.ControlPlane)
 	if err != nil {
@@ -110,4 +111,23 @@ func (r *OSReconciler) preparePlans(ctx context.Context, config *Config) (plans 
 	}
 
 	return planList, nil
+}
+
+// isControlPlaneOnlyCluster returns true if all nodes in the cluster are control plane nodes.
+func isControlPlaneOnlyCluster(nodes []corev1.Node) bool {
+	for _, node := range nodes {
+		if _, isControlPlane := node.Labels[plan.ControlPlaneLabel]; !isControlPlane {
+			return false
+		}
+	}
+	return true
+}
+
+func getNodeNamesFromList(nodes []corev1.Node) []string {
+	nodeNames := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		nodeNames = append(nodeNames, n.Name)
+	}
+
+	return nodeNames
 }

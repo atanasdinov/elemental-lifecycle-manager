@@ -14,15 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upgrade
+package reconcilers
 
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -44,10 +46,10 @@ type PackagedComponentsSnapshot struct {
 type KubernetesPackagedComponentsHandler interface {
 	// Snapshot creates a snapshot of the packaged components for a specific Kubernetes distribution.
 	// Returns the packaged components snapshot, or an error otherwise.
-	GenerateSnapshot(ctx context.Context, config *Config) (*PackagedComponentsSnapshot, error)
+	GenerateSnapshot(ctx context.Context, config *upgrade.Config) (*PackagedComponentsSnapshot, error)
 	// ReconcileAvailability retrieves the packaged components from the provided snapshot, compares them with the
 	// curently running packaged components and waits for any new or changed components to become available.
-	ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error)
+	ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*upgrade.PhaseStatus, error)
 }
 
 // KubernetesReconciler reconciles Kubernetes upgrades via SUC Plans and verifies node state.
@@ -69,11 +71,11 @@ func NewKubernetesReconciler(
 	}
 }
 
-func (r *KubernetesReconciler) Phase() Phase {
-	return PhaseKubernetes
+func (r *KubernetesReconciler) Phase() upgrade.Phase {
+	return upgrade.PhaseKubernetes
 }
 
-func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
+func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *upgrade.Config) (*upgrade.PhaseStatus, error) {
 	if config == nil || config.Kubernetes == nil {
 		return r.Phase().SkippedStatus(), nil
 	}
@@ -106,7 +108,7 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 		}
 
 		if !allNodesAtKubernetesVersion(result.Nodes, k8sConfig.Version) {
-			return &PhaseStatus{
+			return &upgrade.PhaseStatus{
 				State:   lifecyclev1alpha1.UpgradeInProgress,
 				Message: fmt.Sprintf("Plan %s completed, waiting for node upgrade verification", p.Name),
 			}, nil
@@ -119,13 +121,13 @@ func (r *KubernetesReconciler) Reconcile(ctx context.Context, config *Config) (*
 		return status, nil
 	}
 
-	return &PhaseStatus{
+	return &upgrade.PhaseStatus{
 		State:   lifecyclev1alpha1.UpgradeSucceeded,
 		Message: "All nodes upgraded successfully",
 	}, nil
 }
 
-func (r *KubernetesReconciler) preparePlans(ctx context.Context, config *Config) (plans []*upgradecattlev1.Plan, err error) {
+func (r *KubernetesReconciler) preparePlans(ctx context.Context, config *upgrade.Config) (plans []*upgradecattlev1.Plan, err error) {
 	k8sConfig := config.Kubernetes
 	cpPlan := plan.KubernetesControlPlane(config.ReleaseNamespacedName.Name, config.Version, k8sConfig.Version, k8sConfig.DrainOpts.ControlPlane)
 	planList := []*upgradecattlev1.Plan{cpPlan}
@@ -141,4 +143,52 @@ func (r *KubernetesReconciler) preparePlans(ctx context.Context, config *Config)
 	}
 
 	return planList, nil
+}
+
+// allNodesAtKubernetesVersion returns true if all nodes have the target Kubernetes version.
+// Returns false if no nodes are provided.
+// A node is considered upgraded when:
+// - It is in Ready condition
+// - It is not marked as unschedulable
+// - Its kubelet version matches the target version
+func allNodesAtKubernetesVersion(nodes []corev1.Node, targetVersion string) bool {
+	if len(nodes) == 0 {
+		return false
+	}
+
+	for _, node := range nodes {
+		if !isNodeReady(&node) {
+			return false
+		}
+
+		if node.Spec.Unschedulable {
+			return false
+		}
+
+		if !kubeletVersionMatches(node.Status.NodeInfo.KubeletVersion, targetVersion) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isNodeReady returns true if the node has a Ready condition with status True.
+func isNodeReady(node *corev1.Node) bool {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == corev1.NodeReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+// kubeletVersionMatches checks if the kubelet version matches the target version.
+// Handles version format differences (e.g., "v1.30.0" vs "1.30.0").
+func kubeletVersionMatches(kubeletVersion, targetVersion string) bool {
+	// Normalize both versions by removing 'v' prefix if present
+	kubelet := strings.TrimPrefix(kubeletVersion, "v")
+	target := strings.TrimPrefix(targetVersion, "v")
+
+	return kubelet == target
 }

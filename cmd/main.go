@@ -44,6 +44,7 @@ import (
 	"github.com/suse/elemental-lifecycle-manager/internal/helm"
 	"github.com/suse/elemental-lifecycle-manager/internal/release"
 	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade/reconcilers"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -153,25 +154,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	var packagedComponendsHandler upgrade.KubernetesPackagedComponentsHandler
+	var packagedComponendsHandler reconcilers.KubernetesPackagedComponentsHandler
 	switch {
 	case strings.Contains(serverVersion.GitVersion, "rke2"):
-		packagedComponendsHandler = upgrade.NewRKE2PackagedComponentsHandler(k8sClient, helmClient, nil)
+		packagedComponendsHandler = reconcilers.NewRKE2PackagedComponentsHandler(k8sClient, helmClient, nil)
 	}
 
-	sucPlanReconciler := upgrade.NewSUCPlanReconciler(k8sClient)
+	sucPlanReconciler := reconcilers.NewSUCPlanReconciler(k8sClient)
 	if err = (&controller.ReleaseReconciler{
 		Client:           k8sClient,
 		Scheme:           mgr.GetScheme(),
 		RetrieveManifest: release.RetrieveManifest,
 		Pipeline: upgrade.NewPipeline(
-			upgrade.NewOSReconciler(k8sClient, sucPlanReconciler),
-			upgrade.NewKubernetesReconciler(
+			reconcilers.NewOSReconciler(k8sClient, sucPlanReconciler),
+			reconcilers.NewKubernetesReconciler(
 				k8sClient,
 				sucPlanReconciler,
 				packagedComponendsHandler,
 			),
-			upgrade.NewHelmReconciler(k8sClient, helmClient),
+			reconcilers.NewHelmReconciler(k8sClient, helmClient),
 		),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Release")

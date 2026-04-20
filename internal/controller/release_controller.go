@@ -38,6 +38,7 @@ import (
 	"github.com/suse/elemental-lifecycle-manager/internal/plan"
 	releaseManifest "github.com/suse/elemental-lifecycle-manager/internal/release"
 	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade/reconcilers"
 	"github.com/suse/elemental/v3/pkg/manifest/resolver"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -287,7 +288,7 @@ func (r *ReleaseReconciler) mapPlanToRelease(ctx context.Context, obj client.Obj
 // Uses the release name label on the HelmChart to find the corresponding Release.
 func (r *ReleaseReconciler) mapHelmChartToRelease(ctx context.Context, obj client.Object) []ctrl.Request {
 	// Only watch HelmCharts in the namespace where we create them
-	if obj.GetNamespace() != upgrade.HelmChartNamespace {
+	if obj.GetNamespace() != reconcilers.HelmChartNamespace {
 		return nil
 	}
 

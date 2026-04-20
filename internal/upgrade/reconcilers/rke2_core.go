@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upgrade
+package reconcilers
 
 import (
 	"context"
@@ -29,6 +29,7 @@ import (
 	helmv1 "github.com/k3s-io/helm-controller/pkg/apis/helm.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/helm"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -72,7 +73,7 @@ func NewRKE2PackagedComponentsHandler(
 	return handler
 }
 
-func (h *RKE2PackagedComponentsHandler) GenerateSnapshot(ctx context.Context, config *Config) (*PackagedComponentsSnapshot, error) {
+func (h *RKE2PackagedComponentsHandler) GenerateSnapshot(ctx context.Context, config *upgrade.Config) (*PackagedComponentsSnapshot, error) {
 	snapshot := h.blankSnapshot(config)
 	err := h.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: snapshot.Namespace}, snapshot)
 	if err != nil {
@@ -109,7 +110,7 @@ func (h *RKE2PackagedComponentsHandler) GenerateSnapshot(ctx context.Context, co
 	return h.parseSnapshot(snapshot)
 }
 
-func (h *RKE2PackagedComponentsHandler) blankSnapshot(config *Config) *corev1.ConfigMap {
+func (h *RKE2PackagedComponentsHandler) blankSnapshot(config *upgrade.Config) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rke2-packaged-components-snapshot",
@@ -122,7 +123,7 @@ func (h *RKE2PackagedComponentsHandler) blankSnapshot(config *Config) *corev1.Co
 	}
 }
 
-func (h *RKE2PackagedComponentsHandler) createSnapshot(ctx context.Context, snapshot *corev1.ConfigMap, config *Config) error {
+func (h *RKE2PackagedComponentsHandler) createSnapshot(ctx context.Context, snapshot *corev1.ConfigMap, config *upgrade.Config) error {
 	if err := h.populateSnapshot(ctx, snapshot); err != nil {
 		return fmt.Errorf("populating RKE2 packaged components snapshot: %w", err)
 	}
@@ -221,7 +222,7 @@ func (h *RKE2PackagedComponentsHandler) deleteSnapshotAndWait(ctx context.Contex
 	})
 }
 
-func (h *RKE2PackagedComponentsHandler) ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*PhaseStatus, error) {
+func (h *RKE2PackagedComponentsHandler) ReconcileAvailability(ctx context.Context, snapshot *PackagedComponentsSnapshot) (*upgrade.PhaseStatus, error) {
 	snapshotPairs, err := h.findNewOrChangedRKE2PackagedComponents(ctx, snapshot.Charts)
 	if err != nil {
 		return nil, fmt.Errorf("finding new or changed RKE2 packaged components: %w", err)
@@ -234,14 +235,14 @@ func (h *RKE2PackagedComponentsHandler) ReconcileAvailability(ctx context.Contex
 		}
 
 		if !jobComplete {
-			return &PhaseStatus{
+			return &upgrade.PhaseStatus{
 				State:   lifecyclev1alpha1.UpgradeInProgress,
 				Message: fmt.Sprintf("%s RKE2 HelmChart Job execution is still in progress", pair.Chart.Name),
 			}, nil
 		}
 	}
 
-	return &PhaseStatus{
+	return &upgrade.PhaseStatus{
 		State:   lifecyclev1alpha1.K8sPackagedComponentsAvailable,
 		Message: "All RKE2 packaged components available",
 	}, nil

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upgrade
+package reconcilers
 
 import (
 	"context"
@@ -34,6 +34,7 @@ import (
 	helmv1 "github.com/k3s-io/helm-controller/pkg/apis/helm.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
 	"github.com/suse/elemental-lifecycle-manager/internal/helm"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
 	"github.com/suse/elemental/v3/pkg/manifest/api"
 )
 
@@ -70,11 +71,11 @@ func NewHelmReconciler(c client.Client, h helm.Client) *HelmReconciler {
 	}
 }
 
-func (r *HelmReconciler) Phase() Phase {
-	return PhaseHelmCharts
+func (r *HelmReconciler) Phase() upgrade.Phase {
+	return upgrade.PhaseHelmCharts
 }
 
-func (r *HelmReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseStatus, error) {
+func (r *HelmReconciler) Reconcile(ctx context.Context, config *upgrade.Config) (*upgrade.PhaseStatus, error) {
 	if config == nil || config.HelmCharts == nil || len(config.HelmCharts.Charts) == 0 {
 		return r.Phase().SkippedStatus(), nil
 	}
@@ -85,7 +86,7 @@ func (r *HelmReconciler) Reconcile(ctx context.Context, config *Config) (*PhaseS
 // reconcileHelmCharts ensures the HelmChart resources exist and are up to date.
 // Only charts that are already installed on the cluster will be upgraded.
 // Charts are processed in dependency order.
-func (r *HelmReconciler) reconcileHelmCharts(ctx context.Context, releaseName, releaseVersion string, config *HelmChartConfig) (*PhaseStatus, error) {
+func (r *HelmReconciler) reconcileHelmCharts(ctx context.Context, releaseName, releaseVersion string, config *upgrade.HelmChartConfig) (*upgrade.PhaseStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// Store release context for labeling HelmChart resources
@@ -100,7 +101,7 @@ func (r *HelmReconciler) reconcileHelmCharts(ctx context.Context, releaseName, r
 
 	orderedCharts, err := sortChartsByDependencies(config.Charts)
 	if err != nil {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeFailed,
 			Message: fmt.Sprintf("Failed to resolve chart dependencies: %v", err),
 		}, err
@@ -112,7 +113,7 @@ func (r *HelmReconciler) reconcileHelmCharts(ctx context.Context, releaseName, r
 	for _, chart := range orderedCharts {
 		state, err := r.reconcileChart(ctx, chart)
 		if err != nil {
-			return &PhaseStatus{
+			return &upgrade.PhaseStatus{
 				State:   lifecyclev1alpha1.UpgradeFailed,
 				Message: fmt.Sprintf("Failed to reconcile chart %s: %v", chart.GetName(), err),
 			}, err
@@ -393,9 +394,9 @@ func (r *HelmReconciler) evaluateHelmChartJobStatus(ctx context.Context, chart *
 }
 
 // aggregateResults aggregates chart upgrade results into a single PhaseStatus.
-func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCharts int) *PhaseStatus {
+func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCharts int) *upgrade.PhaseStatus {
 	if len(results) == 0 {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeSucceeded,
 			Message: "No Helm charts to reconcile",
 		}
@@ -423,14 +424,14 @@ func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCha
 	}
 
 	if failed > 0 {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeFailed,
 			Message: fmt.Sprintf("Chart %s upgrade failed", failedChart),
 		}
 	}
 
 	if inProgress > 0 {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State: lifecyclev1alpha1.UpgradeInProgress,
 			Message: fmt.Sprintf(
 				"Upgrade in progress: %d/%d upgrades completed, %d already at target version, %d skipped",
@@ -443,20 +444,20 @@ func (r *HelmReconciler) aggregateResults(results []chartUpgradeResult, totalCha
 	}
 
 	if succeeded == 0 && skipped == totalCharts {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeSucceeded,
 			Message: "All Helm charts skipped (not installed on cluster)",
 		}
 	}
 
 	if succeeded == 0 && alreadyAtVersion == totalCharts {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeSucceeded,
 			Message: "All Helm charts are already at target version",
 		}
 	}
 
-	return &PhaseStatus{
+	return &upgrade.PhaseStatus{
 		State: lifecyclev1alpha1.UpgradeSucceeded,
 		Message: fmt.Sprintf(
 			"Upgraded %d charts, %d charts already at target version, skipped %d charts",

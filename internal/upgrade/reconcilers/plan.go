@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upgrade
+package reconcilers
 
 import (
 	"context"
@@ -22,6 +22,7 @@ import (
 
 	upgradecattlev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	lifecyclev1alpha1 "github.com/suse/elemental-lifecycle-manager/api/v1alpha1"
+	"github.com/suse/elemental-lifecycle-manager/internal/upgrade"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +32,7 @@ import (
 )
 
 type PlanResult struct {
-	Status *PhaseStatus
+	Status *upgrade.PhaseStatus
 	Nodes  []corev1.Node
 }
 
@@ -103,9 +104,9 @@ func (p *SUCPlanReconciler) listNodesForPlan(ctx context.Context, plan *upgradec
 	return nodes, nil
 }
 
-func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
+func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *upgrade.PhaseStatus {
 	if len(p.Status.Applying) > 0 {
-		return &PhaseStatus{
+		return &upgrade.PhaseStatus{
 			State:   lifecyclev1alpha1.UpgradeInProgress,
 			Message: fmt.Sprintf("Plan %s is curently applying on: %s", p.Name, p.Status.Applying),
 		}
@@ -114,13 +115,13 @@ func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
 	for _, cond := range p.Status.Conditions {
 		if cond.Type == string(upgradecattlev1.PlanComplete) {
 			if cond.Status == corev1.ConditionTrue {
-				return &PhaseStatus{
+				return &upgrade.PhaseStatus{
 					State:   lifecyclev1alpha1.PlanComplete,
 					Message: fmt.Sprintf("Plan %s execution completed successfully", p.Name),
 				}
 			}
 			if cond.Status == corev1.ConditionFalse && cond.Reason != "" {
-				return &PhaseStatus{
+				return &upgrade.PhaseStatus{
 					State:   lifecyclev1alpha1.UpgradeFailed,
 					Message: fmt.Sprintf("Plan %s failed: %s", p.Name, cond.Message),
 				}
@@ -128,7 +129,7 @@ func parsePhaseStatusFromPlan(p *upgradecattlev1.Plan) *PhaseStatus {
 		}
 	}
 
-	return &PhaseStatus{
+	return &upgrade.PhaseStatus{
 		State:   lifecyclev1alpha1.UpgradeInProgress,
 		Message: fmt.Sprintf("Plan %s execution in progress", p.Name),
 	}
