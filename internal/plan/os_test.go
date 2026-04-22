@@ -29,9 +29,9 @@ import (
 var _ = Describe("OS plan tests", func() {
 	const (
 		releaseName           = "test-release"
+		releaseVersion        = "0.6.0"
 		osImage               = "registry.example.com/elemental-os:1.2.3"
 		osVersion             = "1.2.3"
-		version               = "0.6.0"
 		drain                 = true
 		expectedUpgradeScript = `HOST="${HOST:-/host}"
 DEPLOYMENT="${DEPLOYMENT:-$HOST/etc/elemental/deployment.yaml}"
@@ -54,10 +54,7 @@ if [ -n "$CURRENT" ]; then
     fi
 fi
 
-chroot "$HOST" /bin/sh -c "
-  elemental3ctl --debug upgrade --os-image '$INCOMING' &&
-  reboot
-"
+USE_LOCAL_IMAGES=false upgrader "$INCOMING" && chroot /host reboot
 `
 	)
 
@@ -90,7 +87,7 @@ chroot "$HOST" /bin/sh -c "
 
 		BeforeAll(func() {
 			var err error
-			plan, err = OSControlPlane(releaseName, osImage, osVersion, version, drain)
+			plan, err = OSControlPlane(releaseName, osImage, osVersion, releaseVersion, drain)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -126,7 +123,7 @@ chroot "$HOST" /bin/sh -c "
 
 		It("configures upgrade container", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
-			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
+			Expect(plan.Spec.Upgrade.Image).To(Equal(osImage))
 			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"/bin/sh", "-c"}))
 			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{expectedUpgradeScript}))
 		})
@@ -145,7 +142,7 @@ chroot "$HOST" /bin/sh -c "
 
 		BeforeAll(func() {
 			var err error
-			plan, err = OSWorker(releaseName, osImage, osVersion, version, drain)
+			plan, err = OSWorker(releaseName, osImage, osVersion, releaseVersion, drain)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -181,7 +178,7 @@ chroot "$HOST" /bin/sh -c "
 
 		It("configures upgrade container", func() {
 			Expect(plan.Spec.Upgrade).ToNot(BeNil())
-			Expect(plan.Spec.Upgrade.Image).To(Equal(upgradeImage))
+			Expect(plan.Spec.Upgrade.Image).To(Equal(osImage))
 			Expect(plan.Spec.Upgrade.Command).To(Equal([]string{"/bin/sh", "-c"}))
 			Expect(plan.Spec.Upgrade.Args).To(Equal([]string{expectedUpgradeScript}))
 		})

@@ -19,7 +19,4 @@ if [ -n "$CURRENT" ]; then
     fi
 fi
 
-chroot "$HOST" /bin/sh -c "
-  elemental3ctl --debug upgrade --os-image '$INCOMING' &&
-  reboot
-"
+USE_LOCAL_IMAGES=false upgrader "$INCOMING" && chroot /host reboot

@@ -48,13 +48,12 @@ func osWorkerName(version string) string {
 // OSControlPlane builds a SUC Plan for OS upgrades on control plane nodes.
 // Control plane nodes are upgraded first, without waiting for workers.
 func OSControlPlane(releaseName, osImage, osVersion, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
-	repo, version := parseImage(osImage)
-	script, err := parseUpgradeScript(repo, version)
+	script, err := parseUpgradeScript(parseImage(osImage))
 	if err != nil {
 		return nil, fmt.Errorf("parsing OS upgrade script: %w", err)
 	}
 
-	p := basePlan(osControlPlaneName(version), drain)
+	p := basePlan(osControlPlaneName(osVersion), drain)
 	p.Labels = map[string]string{
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
@@ -70,7 +69,7 @@ func OSControlPlane(releaseName, osImage, osVersion, releaseVersion string, drai
 		},
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
-		Image:   upgradeImage,
+		Image:   osImage,
 		Command: []string{"/bin/sh", "-c"},
 		Args:    []string{script},
 	}
@@ -80,13 +79,12 @@ func OSControlPlane(releaseName, osImage, osVersion, releaseVersion string, drai
 // OSWorker builds a SUC Plan for OS upgrades on worker nodes.
 // Worker nodes wait for control plane upgrades to complete before starting.
 func OSWorker(releaseName, osImage, osVersion, releaseVersion string, drain bool) (*upgradecattlev1.Plan, error) {
-	repo, version := parseImage(osImage)
-	script, err := parseUpgradeScript(repo, version)
+	script, err := parseUpgradeScript(parseImage(osImage))
 	if err != nil {
 		return nil, fmt.Errorf("parsing OS upgrade script: %w", err)
 	}
 
-	p := basePlan(osWorkerName(version), drain)
+	p := basePlan(osWorkerName(osVersion), drain)
 	p.Labels = map[string]string{
 		lifecyclev1alpha1.ReleaseNameLabel:    releaseName,
 		lifecyclev1alpha1.ReleaseVersionLabel: lifecyclev1alpha1.SanitizeVersion(releaseVersion),
@@ -102,7 +100,7 @@ func OSWorker(releaseName, osImage, osVersion, releaseVersion string, drain bool
 		},
 	}
 	p.Spec.Upgrade = &upgradecattlev1.ContainerSpec{
-		Image:   upgradeImage,
+		Image:   osImage,
 		Command: []string{"/bin/sh", "-c"},
 		Args:    []string{script},
 	}

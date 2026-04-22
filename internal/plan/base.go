@@ -31,9 +31,6 @@ const (
 
 	// ControlPlaneLabel is an identifier of control plane nodes.
 	ControlPlaneLabel = "node-role.kubernetes.io/control-plane"
-
-	// Container image for executing an upgrade.
-	upgradeImage = "registry.suse.com/bci/bci-base:16.0"
 )
 
 func basePlan(name string, drain bool) *upgradecattlev1.Plan {
