@@ -9,7 +9,7 @@ require (
 	github.com/onsi/gomega v1.39.1
 	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20251211213351-2f75d12fe083
 	github.com/suse/elemental/v3 v3.0.0-alpha.20251212.0.20260415161803-be5ae92973de
-	helm.sh/helm/v4 v4.1.0
+	helm.sh/helm/v4 v4.1.4
 	k8s.io/api v0.35.4
 	k8s.io/apimachinery v0.35.4
 	k8s.io/client-go v0.35.3
@@ -67,8 +67,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
-	github.com/prometheus/procfs v0.17.0 // indirect
+	github.com/prometheus/common v0.67.5 // indirect
+	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/rancher/wrangler/v3 v3.3.3 // indirect
 	github.com/rubenv/sql-migrate v1.8.1 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
